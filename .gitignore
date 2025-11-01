@@ -1,0 +1,85 @@
+# Virtual environments
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Database files
+*.db
+*.db-journal
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+coverage/
+*.min.js
+*.min.css
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Docker
+.dockerignore
+.docker/
+
+# Python
+*.egg-info/
+MANIFEST
+requirements.txt.bak
+
+# Node
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.npm
+.nuxt
+.next
+.vercel
+
+# Frontend
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.next/
+frontend/coverage/
+frontend/build/
+
+# Backend
+backend/__pycache__/
+backend/alembic/versions/__pycache__/
+backend/alembic/env.pyc
+backend/alembic/script.pyc
+
+# Media files (unless specifically needed in repo)
+media/
+backend/media/

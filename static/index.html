@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Холст - Визуальное управление задачами</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/konva@8.3.12/konva.min.css">
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; }
+        #container { width: 100vw; height: 100vh; }
+        .toolbar { position: absolute; top: 10px; left: 10px; z-index: 1000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .toolbar button { margin: 0 5px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button id="add-task">Добавить задачу</button>
+        <button id="add-note">Добавить заметку</button>
+        <button id="export">Экспорт</button>
+    </div>
+    <div id="container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/konva@8.3.12/konva.min.js"></script>
+    <script>
+        // Инициализация Konva
+        const stage = new Konva.Stage({
+            container: 'container',
+            width: window.innerWidth,
+            height: window.innerHeight,
+            draggable: true
+        });
+
+        const layer = new Konva.Layer();
+        stage.add(layer);
+
+        // Функция добавления задачи
+        function addTask(x, y) {
+            const group = new Konva.Group({
+                x: x,
+                y: y,
+                draggable: true
+            });
+
+            const rect = new Konva.Rect({
+                width: 300,
+                height: 200,
+                fill: 'lightblue',
+                stroke: 'blue',
+                strokeWidth: 2
+            });
+
+            const text = new Konva.Text({
+                text: 'Новая задача',
+                x: 10,
+                y: 10,
+                fontSize: 16,
+                fill: 'black'
+            });
+
+            group.add(rect);
+            group.add(text);
+            layer.add(group);
+            layer.draw();
+        }
+
+        // Обработчики событий
+        document.getElementById('add-task').addEventListener('click', () => {
+            addTask(100, 100);
+        });
+
+        // Масштабирование
+        stage.on('wheel', (e) => {
+            e.evt.preventDefault();
+            const scaleBy = 1.1;
+            const oldScale = stage.scaleX();
+
+            const pointer = stage.getPointerPosition();
+            const mousePointTo = {
+                x: (pointer.x - stage.x()) / oldScale,
+                y: (pointer.y - stage.y()) / oldScale,
+            };
+
+            const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+            stage.scale({ x: newScale, y: newScale });
+
+            const newPos = {
+                x: pointer.x - mousePointTo.x * newScale,
+                y: pointer.y - mousePointTo.y * newScale,
+            };
+            stage.position(newPos);
+            stage.batchDraw();
+        });
+    </script>
+</body>
+</html>
