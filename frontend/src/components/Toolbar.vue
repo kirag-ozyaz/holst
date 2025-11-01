@@ -9,8 +9,8 @@
 </template>
 
 <script>
-import { useCanvasStore } from '../stores/canvas'
-import { useRouter } from 'vue-router'
+import { useRouter } from 'vue-router';
+import { useCanvasStore } from '../stores/canvas';
 
 export default {
   name: 'Toolbar',
@@ -32,7 +32,8 @@ export default {
         x: Math.random() * 500,
         y: Math.random() * 500
       }
-      await this.canvasStore.createCard(cardData)
+      // Вызываем событие для добавления карточки на холсте
+      this.$emit('add-card', cardData)
     },
 
     async addNote() {
@@ -41,7 +42,8 @@ export default {
         x: Math.random() * 500,
         y: Math.random() * 500
       }
-      await this.canvasStore.createNote(noteData)
+      // Вызываем событие для добавления заметки на холсте
+      this.$emit('add-note', noteData)
     },
 
     toggleView() {

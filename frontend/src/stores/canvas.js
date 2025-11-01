@@ -77,6 +77,20 @@ export const useCanvasStore = defineStore('canvas', {
       }
     },
 
+    async updateNote(noteId, noteData) {
+      try {
+        const response = await axios.put(`/api/notes/${noteId}`, noteData)
+        const index = this.notes.findIndex(note => note.id === noteId)
+        if (index !== -1) {
+          this.notes[index] = response.data
+        }
+        return response.data
+      } catch (error) {
+        console.error('Error updating note:', error)
+        throw error
+      }
+    },
+
     async createTaskLink(linkData) {
       try {
         const response = await axios.post('/api/task-links', linkData)

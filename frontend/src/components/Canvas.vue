@@ -5,8 +5,8 @@
 </template>
 
 <script>
-import Konva from 'konva'
-import { useCanvasStore } from '../stores/canvas'
+import Konva from 'konva';
+import { useCanvasStore } from '../stores/canvas';
 
 export default {
   name: 'Canvas',
@@ -26,6 +26,16 @@ export default {
   mounted() {
     this.initCanvas()
     this.loadData()
+    // Watch for changes in cards and notes
+    this.canvasStore.$subscribe((mutation, state) => {
+      this.$nextTick(() => {
+        this.updateExistingElements();
+        this.addNewElements();
+        this.removeDeletedElements();
+        this.renderLinks();
+        this.layer.draw();
+      })
+    })
   },
   methods: {
     initCanvas() {
@@ -66,6 +76,48 @@ export default {
       window.addEventListener('resize', this.handleResize)
     },
 
+    async addCard(cardData) {
+      try {
+        // Если в хранилище есть карточки, определяем позицию рядом с последней
+        if (this.canvasStore.cards.length > 0) {
+          const lastCard = this.canvasStore.cards[this.canvasStore.cards.length - 1]
+          cardData.x = lastCard.x + 50 // Смещаем на 50 пикселей вправо
+          cardData.y = lastCard.y + 50  // Смещаем на 50 пикселей вниз
+        } else {
+          // Если карточек нет, используем случайную позицию
+          cardData.x = Math.random() * 500
+          cardData.y = Math.random() * 500
+        }
+        
+        const newCard = await this.canvasStore.createCard(cardData)
+        this.renderCard(newCard)
+        this.layer.draw()
+      } catch (error) {
+        console.error('Error adding card:', error)
+      }
+    },
+
+    async addNote(noteData) {
+      try {
+        // Если в хранилище есть заметки, определяем позицию рядом с последней
+        if (this.canvasStore.notes.length > 0) {
+          const lastNote = this.canvasStore.notes[this.canvasStore.notes.length - 1]
+          noteData.x = lastNote.x + 50 // Смещаем на 50 пикселей вправо
+          noteData.y = lastNote.y + 50  // Смещаем на 50 пикселей вниз
+        } else {
+          // Если заметок нет, используем случайную позицию
+          noteData.x = Math.random() * 500
+          noteData.y = Math.random() * 500
+        }
+        
+        const newNote = await this.canvasStore.createNote(noteData)
+        this.renderNote(newNote)
+        this.layer.draw()
+      } catch (error) {
+        console.error('Error adding note:', error)
+      }
+    },
+
     handleResize() {
       this.stage.width(window.innerWidth)
       this.stage.height(window.innerHeight)
@@ -77,22 +129,97 @@ export default {
     },
 
     renderCanvas() {
-      this.layer.destroyChildren()
-
-      // Render cards
+      // Сначала обновляем существующие элементы
+      this.updateExistingElements();
+      
+      // Затем добавляем новые элементы
+      this.addNewElements();
+      
+      // Удаляем удаленные элементы
+      this.removeDeletedElements();
+      
+      // Рендерим связи
+      this.renderLinks();
+      
+      this.layer.draw();
+    },
+    
+    updateExistingElements() {
+      // Обновляем позиции существующих карточек
       this.canvasStore.cards.forEach(card => {
-        this.renderCard(card)
-      })
-
-      // Render notes
+        const existingCard = this.cardElements.get(card.id);
+        if (existingCard) {
+          // Обновляем позицию существующего элемента
+          existingCard.position({ x: card.x, y: card.y });
+          // Обновляем текст
+          const text = existingCard.findOne('Text');
+          if (text) {
+            text.text(card.title);
+          }
+          // Обновляем размеры
+          const rect = existingCard.findOne('Rect');
+          if (rect) {
+            rect.width(card.width || 300);
+            rect.height(card.height || 200);
+          }
+        }
+      });
+      
+      // Обновляем позиции существующих заметок
       this.canvasStore.notes.forEach(note => {
-        this.renderNote(note)
-      })
-
-      // Render links
-      this.renderLinks()
-
-      this.layer.draw()
+        const existingNote = this.noteElements.get(note.id);
+        if (existingNote) {
+          // Обновляем позицию существующего элемента
+          existingNote.position({ x: note.x, y: note.y });
+          // Обновляем текст
+          const text = existingNote.findOne('Text');
+          if (text) {
+            text.text(note.title);
+          }
+          // Обновляем размеры
+          const rect = existingNote.findOne('Rect');
+          if (rect) {
+            rect.width(note.width || 250);
+            rect.height(note.height || 150);
+          }
+        }
+      });
+    },
+    
+    addNewElements() {
+      // Добавляем новые карточки
+      this.canvasStore.cards.forEach(card => {
+        if (!this.cardElements.has(card.id)) {
+          this.renderCard(card);
+        }
+      });
+      
+      // Добавляем новые заметки
+      this.canvasStore.notes.forEach(note => {
+        if (!this.noteElements.has(note.id)) {
+          this.renderNote(note);
+        }
+      });
+    },
+    
+    removeDeletedElements() {
+      // Удаляем карточки, которых больше нет в хранилище
+      for (let [id, element] of this.cardElements) {
+        const exists = this.canvasStore.cards.some(card => card.id === id);
+        if (!exists) {
+          element.destroy();
+          this.cardElements.delete(id);
+        }
+      }
+      
+      // Удаляем заметки, которых больше нет в хранилище
+      for (let [id, element] of this.noteElements) {
+        const exists = this.canvasStore.notes.some(note => note.id === id);
+        if (!exists) {
+          element.destroy();
+          this.noteElements.delete(id);
+        }
+      }
     },
 
     renderCard(card) {
@@ -135,6 +262,29 @@ export default {
 
       this.layer.add(group)
       this.cardElements.set(card.id, group)
+    },
+
+    // Добавляем методы для обновления элементов при изменении в сторе
+    updateCardElement(cardId, newCardData) {
+      // Удаляем старый элемент
+      const oldGroup = this.cardElements.get(cardId)
+      if (oldGroup) {
+        oldGroup.destroy()
+        this.cardElements.delete(cardId)
+      }
+      // Создаем новый элемент
+      this.renderCard(newCardData)
+    },
+
+    updateNoteElement(noteId, newNoteData) {
+      // Удаляем старый элемент
+      const oldGroup = this.noteElements.get(noteId)
+      if (oldGroup) {
+        oldGroup.destroy()
+        this.noteElements.delete(noteId)
+      }
+      // Создаем новый элемент
+      this.renderNote(newNoteData)
     },
 
     renderNote(note) {
@@ -208,8 +358,11 @@ export default {
     },
 
     async updateNotePosition(noteId, x, y) {
-      // TODO: Implement note update
-      console.log('Update note position:', noteId, x, y)
+      try {
+        await this.canvasStore.updateNote(noteId, { x, y })
+      } catch (error) {
+        console.error('Error updating note position:', error)
+      }
     }
   },
 

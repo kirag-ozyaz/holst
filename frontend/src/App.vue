@@ -1,19 +1,27 @@
 <template>
   <div id="app">
-    <Toolbar />
-    <Canvas />
-  </div>
+    <Toolbar @add-card="handleAddCard" @add-note="handleAddNote" />
+    <Canvas ref="canvas" />
+ </div>
 </template>
 
 <script>
-import Toolbar from './components/Toolbar.vue'
-import Canvas from './components/Canvas.vue'
+import Canvas from './components/Canvas.vue';
+import Toolbar from './components/Toolbar.vue';
 
 export default {
   name: 'App',
   components: {
     Toolbar,
     Canvas
+  },
+  methods: {
+    handleAddCard(cardData) {
+      this.$refs.canvas.addCard(cardData)
+    },
+    handleAddNote(noteData) {
+      this.$refs.canvas.addNote(noteData)
+    }
   }
 }
 </script>
