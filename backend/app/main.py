@@ -10,15 +10,26 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from .database import engine, get_db
-from .models import Card, EventLog, File, Note, NoteLink, TaskLink
+from .models import Task, EventLog, File, Note, NoteLink, TaskLink
 
 # Create tables
-Card.__table__.create(bind=engine, checkfirst=True)
-Note.__table__.create(bind=engine, checkfirst=True)
-File.__table__.create(bind=engine, checkfirst=True)
-TaskLink.__table__.create(bind=engine, checkfirst=True)
-NoteLink.__table__.create(bind=engine, checkfirst=True)
-EventLog.__table__.create(bind=engine, checkfirst=True)
+try:
+    Task.__table__.create(bind=engine, checkfirst=True)
+    Note.__table__.create(bind=engine, checkfirst=True)
+    File.__table__.create(bind=engine, checkfirst=True)
+    TaskLink.__table__.create(bind=engine, checkfirst=True)
+    NoteLink.__table__.create(bind=engine, checkfirst=True)
+    EventLog.__table__.create(bind=engine, checkfirst=True)
+except Exception as e:
+    print(f"Error creating tables: {e}")
+    import time
+    time.sleep(5)  # Wait for DB to be ready
+    Task.__table__.create(bind=engine, checkfirst=True)
+    Note.__table__.create(bind=engine, checkfirst=True)
+    File.__table__.create(bind=engine, checkfirst=True)
+    TaskLink.__table__.create(bind=engine, checkfirst=True)
+    NoteLink.__table__.create(bind=engine, checkfirst=True)
+    EventLog.__table__.create(bind=engine, checkfirst=True)
 
 app = FastAPI(title="Холст API", version="1.0.0")
 
@@ -45,16 +56,32 @@ MEDIA_DIR.mkdir(exist_ok=True)
 def health_check():
     return {"status": "ok", "message": "Холст API работает"}
 
+# Helper function to get next z_index
+def get_next_z_index(db: Session):
+    max_task_z = db.query(Task).order_by(Task.z_index.desc()).first()
+    max_note_z = db.query(Note).order_by(Note.z_index.desc()).first()
+    
+    max_z = 0
+    if max_card_z and max_card_z.z_index:
+        max_z = max(max_z, max_card_z.z_index)
+    if max_note_z and max_note_z.z_index:
+        max_z = max(max_z, max_note_z.z_index)
+    
+    return max_z + 1
+
 # Cards CRUD
 @app.post("/api/cards")
 def create_card(card_data: dict, db: Session = Depends(get_db)):
     card_id = str(uuid.uuid4())
-    card = Card(
+    z_index = card_data.get("z_index", get_next_z_index(db))
+    
+    card = Task(
         id=card_id,
         title=card_data.get("title", "Новая задача"),
         content=card_data.get("content", []),
         x=card_data.get("x", 100),
         y=card_data.get("y", 100),
+        z_index=z_index,
         width=card_data.get("width", 300),
         height=card_data.get("height", 200),
         parent_id=card_data.get("parent_id")
@@ -66,18 +93,18 @@ def create_card(card_data: dict, db: Session = Depends(get_db)):
 
 @app.get("/api/cards")
 def get_cards(db: Session = Depends(get_db)):
-    return db.query(Card).all()
+    return db.query(Task).all()
 
 @app.get("/api/cards/{card_id}")
 def get_card(card_id: str, db: Session = Depends(get_db)):
-    card = db.query(Card).filter(Card.id == card_id).first()
+    card = db.query(Task).filter(Task.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
     return card
 
 @app.put("/api/cards/{card_id}")
 def update_card(card_id: str, card_data: dict, db: Session = Depends(get_db)):
-    card = db.query(Card).filter(Card.id == card_id).first()
+    card = db.query(Task).filter(Task.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
@@ -91,7 +118,7 @@ def update_card(card_id: str, card_data: dict, db: Session = Depends(get_db)):
 
 @app.delete("/api/cards/{card_id}")
 def delete_card(card_id: str, db: Session = Depends(get_db)):
-    card = db.query(Card).filter(Card.id == card_id).first()
+    card = db.query(Task).filter(Task.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
@@ -103,12 +130,15 @@ def delete_card(card_id: str, db: Session = Depends(get_db)):
 @app.post("/api/notes")
 def create_note(note_data: dict, db: Session = Depends(get_db)):
     note_id = str(uuid.uuid4())
+    z_index = note_data.get("z_index", get_next_z_index(db))
+    
     note = Note(
         id=note_id,
         title=note_data.get("title", "Новая заметка"),
         content=note_data.get("content", []),
         x=note_data.get("x", 100),
         y=note_data.get("y", 100),
+        z_index=z_index,
         width=note_data.get("width", 300),
         height=note_data.get("height", 200),
         card_id=note_data.get("card_id")
@@ -162,12 +192,12 @@ def create_task_link(link_data: dict, db: Session = Depends(get_db)):
     link_target_type = link_data.get("link_target_type", "card")
     
     # Validate that source and target exist
-    source_card = db.query(Card).filter(Card.id == source_id).first()
+    source_card = db.query(Task).filter(Task.id == source_id).first()
     if not source_card:
         raise HTTPException(status_code=404, detail="Source card not found")
     
-    if link_target_type == "card":
-        target_card = db.query(Card).filter(Card.id == target_id).first()
+    if link_target_type == "task":
+        target_card = db.query(Task).filter(Task.id == target_id).first()
         if not target_card:
             raise HTTPException(status_code=404, detail="Target card not found")
     elif link_target_type == "note":
@@ -235,7 +265,7 @@ def delete_note_link(link_id: int, db: Session = Depends(get_db)):
 @app.post("/api/cards/{card_id}/files")
 def upload_card_file(card_id: str, file: UploadFile = File(), db: Session = Depends(get_db)):
     # Check if card exists
-    card = db.query(Card).filter(Card.id == card_id).first()
+    card = db.query(Task).filter(Task.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
@@ -265,18 +295,24 @@ def download_file(file_id: int, db: Session = Depends(get_db)):
 
     return {"url": f"/media/{Path(file_record.filepath).name}"}
 
+# Z-index management
+@app.get("/api/max-z-index")
+def get_max_z_index(db: Session = Depends(get_db)):
+    """Get the maximum z_index across all cards and notes"""
+    return {"max_z_index": get_next_z_index(db) - 1}
+
 # Search
 @app.get("/api/search")
 def search(q: str, db: Session = Depends(get_db)):
     # Simple search implementation
-    cards = db.query(Card).filter(Card.title.ilike(f"%{q}%")).all()
+    cards = db.query(Task).filter(Task.title.ilike(f"%{q}%")).all()
     notes = db.query(Note).filter(Note.title.ilike(f"%{q}%")).all()
     return {"cards": cards, "notes": notes}
 
 # Graph
 @app.get("/api/graph")
 def get_graph(db: Session = Depends(get_db)):
-    cards = db.query(Card).all()
+    cards = db.query(Task).all()
     notes = db.query(Note).all()
     task_links = db.query(TaskLink).all()
     note_links = db.query(NoteLink).all()

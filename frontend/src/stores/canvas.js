@@ -33,6 +33,11 @@ export const useCanvasStore = defineStore('canvas', {
 
     async createCard(cardData) {
       try {
+        // Получаем следующий z_index если не указан
+        if (cardData.z_index === undefined) {
+          const maxZResponse = await axios.get('/api/max-z-index')
+          cardData.z_index = maxZResponse.data.max_z_index + 1
+        }
         const response = await axios.post('/api/cards', cardData)
         this.cards.push(response.data)
         return response.data
@@ -47,7 +52,8 @@ export const useCanvasStore = defineStore('canvas', {
         const response = await axios.put(`/api/cards/${cardId}`, cardData)
         const index = this.cards.findIndex(card => card.id === cardId)
         if (index !== -1) {
-          this.cards[index] = response.data
+          // Обновляем только измененные поля, сохраняя остальные
+          Object.assign(this.cards[index], response.data)
         }
         return response.data
       } catch (error) {
@@ -68,6 +74,11 @@ export const useCanvasStore = defineStore('canvas', {
 
     async createNote(noteData) {
       try {
+        // Получаем следующий z_index если не указан
+        if (noteData.z_index === undefined) {
+          const maxZResponse = await axios.get('/api/max-z-index')
+          noteData.z_index = maxZResponse.data.max_z_index + 1
+        }
         const response = await axios.post('/api/notes', noteData)
         this.notes.push(response.data)
         return response.data
@@ -82,7 +93,8 @@ export const useCanvasStore = defineStore('canvas', {
         const response = await axios.put(`/api/notes/${noteId}`, noteData)
         const index = this.notes.findIndex(note => note.id === noteId)
         if (index !== -1) {
-          this.notes[index] = response.data
+          // Обновляем только измененные поля, сохраняя остальные
+          Object.assign(this.notes[index], response.data)
         }
         return response.data
       } catch (error) {
@@ -104,6 +116,18 @@ export const useCanvasStore = defineStore('canvas', {
 
     setSelectedElement(element) {
       this.selectedElement = element
+    },
+
+    // Получить максимальный z_index
+    getMaxZIndex() {
+      let maxZ = 0
+      this.cards.forEach(card => {
+        if (card.z_index > maxZ) maxZ = card.z_index
+      })
+      this.notes.forEach(note => {
+        if (note.z_index > maxZ) maxZ = note.z_index
+      })
+      return maxZ
     },
 
     setTransform(scale, x, y) {

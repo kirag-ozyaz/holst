@@ -24,12 +24,13 @@ def upgrade() -> None:
         sa.Column('content', postgresql.JSON(astext_type=sa.Text()), nullable=True),
         sa.Column('x', sa.Integer(), nullable=True),
         sa.Column('y', sa.Integer(), nullable=True),
+        sa.Column('z_index', sa.Integer(), nullable=True),
         sa.Column('width', sa.Integer(), nullable=True),
         sa.Column('height', sa.Integer(), nullable=True),
         sa.Column('parent_id', sa.String(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(['parent_id'], ['cards.id'], ),
+        sa.ForeignKeyConstraint(['parent_id'], ['tasks.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
 
@@ -40,12 +41,13 @@ def upgrade() -> None:
         sa.Column('content', postgresql.JSON(astext_type=sa.Text()), nullable=True),
         sa.Column('x', sa.Integer(), nullable=True),
         sa.Column('y', sa.Integer(), nullable=True),
+        sa.Column('z_index', sa.Integer(), nullable=True),
         sa.Column('width', sa.Integer(), nullable=True),
         sa.Column('height', sa.Integer(), nullable=True),
         sa.Column('card_id', sa.String(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(['card_id'], ['cards.id'], ),
+        sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
 
@@ -59,7 +61,7 @@ def upgrade() -> None:
         sa.Column('card_id', sa.String(), nullable=True),
         sa.Column('note_id', sa.String(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
-        sa.ForeignKeyConstraint(['card_id'], ['cards.id'], ),
+        sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
         sa.ForeignKeyConstraint(['note_id'], ['notes.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
@@ -72,7 +74,7 @@ def upgrade() -> None:
         sa.Column('link_type', sa.String(), nullable=False),
         sa.Column('link_target_type', sa.String(), server_default='card'),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
-        sa.ForeignKeyConstraint(['source_id'], ['cards.id'], ),
+        sa.ForeignKeyConstraint(['source_id'], ['tasks.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
 
@@ -104,7 +106,9 @@ def upgrade() -> None:
 
     # Create indexes for full-text search
     op.create_index('ix_cards_title', 'cards', ['title'], unique=False)
+    op.create_index('ix_cards_z_index', 'cards', ['z_index'], unique=False)
     op.create_index('ix_notes_title', 'notes', ['title'], unique=False)
+    op.create_index('ix_notes_z_index', 'notes', ['z_index'], unique=False)
     op.execute('CREATE INDEX ix_cards_content ON cards USING gin(to_tsvector(\'russian\', title || \' \' || coalesce(content::text, \'\')))')
     op.execute('CREATE INDEX ix_notes_content ON notes USING gin(to_tsvector(\'russian\', title || \' \' || coalesce(content::text, \'\')))')
 
@@ -112,7 +116,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index('ix_notes_content')
     op.drop_index('ix_cards_content')
+    op.drop_index('ix_notes_z_index')
     op.drop_index('ix_notes_title')
+    op.drop_index('ix_cards_z_index')
     op.drop_index('ix_cards_title')
     op.drop_table('event_logs')
     op.drop_table('note_links')

@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.database import Base
-from app.models.card import Card
+from app.models.task import Task
 from app.models.note import Note
 from app.models.file import File
 from app.models.task_link import TaskLink

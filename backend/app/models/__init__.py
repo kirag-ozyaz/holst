@@ -1,4 +1,4 @@
-from .card import Card
+from .task import Task
 from .note import Note
 from .file import File
 from .task_link import TaskLink

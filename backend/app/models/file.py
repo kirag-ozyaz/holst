@@ -11,10 +11,11 @@ class File(Base):
     filepath = Column(String, nullable=False)  # Path relative to media root
     file_size = Column(Integer, nullable=False)
     mime_type = Column(String, nullable=False)
-    card_id = Column(String, ForeignKey("cards.id"), nullable=True)
+    base_card_id = Column(String, nullable=True)  # For general base card reference (will reference tasks since BaseCard is abstract)
+    task_id = Column(String, ForeignKey("tasks.id"), nullable=True)
     note_id = Column(String, ForeignKey("notes.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
-    card = relationship("Card", back_populates="files")
+    task = relationship("Task", back_populates="files")
     note = relationship("Note", back_populates="files")

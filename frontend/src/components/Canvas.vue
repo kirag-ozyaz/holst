@@ -6,24 +6,308 @@
 
 <script>
 import Konva from 'konva';
+import { markRaw, onMounted, onUnmounted, ref, toRaw } from 'vue';
+import { NoteCard } from '../classes/NoteCard.js';
+import { TaskCard } from '../classes/TaskCard.js';
+import { CanvasElementService } from '../services/CanvasElementService.js';
 import { useCanvasStore } from '../stores/canvas';
 
 export default {
   name: 'Canvas',
-  data() {
-    return {
-      stage: null,
-      layer: null,
-      cardElements: new Map(),
-      noteElements: new Map(),
-      linkElements: []
-    }
-  },
   setup() {
-    const canvasStore = useCanvasStore()
-    return { canvasStore }
+    // Используем специальную функцию для создания безопасных объектов Konva
+    // Создаем полностью изолированный контекст для работы с Konva
+    const stage = ref(null);
+    const layer = ref(null);
+    const elementService = ref(null);
+    // Используем обычные JS структуры данных вместо реактивных refs
+    const elements = markRaw(new Map());
+    const linkElements = markRaw([]);
+    
+    // Функция для безопасного создания объектов Konva
+    const createSafeKonvaObject = (factoryFn) => {
+      try {
+        // Создаем объект с использованием markRaw для полной изоляции от реактивности Vue
+        const obj = markRaw(factoryFn());
+        return obj;
+      } catch (error) {
+        console.error('Error creating safe Konva object:', error);
+        return null;
+      }
+    };
+    
+    const canvasStore = useCanvasStore();
+    
+    const initCanvas = () => {
+      // Создаем сцену и слой с markRaw для полной изоляции
+      const stageObj = markRaw(new Konva.Stage({
+        container: document.querySelector('.stage-container'),
+        width: window.innerWidth,
+        height: window.innerHeight,
+        draggable: true
+      }));
+
+      const layerObj = markRaw(new Konva.Layer());
+      stageObj.add(layerObj);
+      
+      // Сохраняем объекты в refs
+      stage.value = stageObj;
+      layer.value = layerObj;
+
+      // Клик по пустому месту - снять выделение
+      stage.value.on('click', (e) => {
+        if (e.target === stage.value) {
+          canvasStore.setSelectedElement(null)
+        }
+      })
+
+      // Zoom functionality
+      stage.value.on('wheel', (e) => {
+        e.evt.preventDefault()
+        const scaleBy = 1.1
+        const oldScale = stage.value.scaleX()
+        const pointer = stage.value.getPointerPosition()
+
+        const mousePointTo = {
+          x: (pointer.x - stage.value.x()) / oldScale,
+          y: (pointer.y - stage.value.y()) / oldScale,
+        }
+
+        const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy
+        stage.value.scale({ x: newScale, y: newScale })
+
+        const newPos = {
+          x: pointer.x - mousePointTo.x * newScale,
+          y: pointer.y - mousePointTo.y * newScale,
+        }
+        stage.value.position(newPos)
+        stage.value.batchDraw()
+      })
+
+      window.addEventListener('resize', handleResize)
+    };
+    
+    const handleResize = () => {
+      if (stage.value) {
+        stage.value.width(window.innerWidth)
+        stage.value.height(window.innerHeight)
+      }
+    };
+    
+    const loadData = async () => {
+      await canvasStore.loadData()
+      renderCanvas()
+    };
+    
+    const renderCanvas = () => {
+      // Сначала обновляем существующие элементы
+      updateExistingElements();
+
+      // Затем добавляем новые элементы
+      addNewElements();
+
+      // Удаляем удаленные элементы
+      removeDeletedElements();
+
+      // Рендерим связи (они должны быть под элементами)
+      renderLinks();
+
+      // Поддерживаем правильный порядок элементов
+      maintainElementsOrder();
+
+      if (layer.value) {
+        layer.value.draw();
+      }
+    };
+    
+    const updateExistingElements = () => {
+      canvasStore.cards.forEach(card => {
+        const element = toRaw(elements.get(card.id));
+        if (element) {
+          element.updatePosition(card.x, card.y);
+        }
+      });
+      
+      canvasStore.notes.forEach(note => {
+        const element = toRaw(elements.get(note.id));
+        if (element) {
+          element.updatePosition(note.x, note.y);
+        }
+      });
+    };
+    
+    const addNewElements = () => {
+      // Добавляем новые карточки
+      canvasStore.cards.forEach(card => {
+        if (!elements.has(card.id)) {
+          createElement(card, 'task');
+        }
+      });
+      
+      // Добавляем новые заметки
+      canvasStore.notes.forEach(note => {
+        if (!elements.has(note.id)) {
+          createElement(note, 'note');
+        }
+      });
+      
+      // Восстанавливаем порядок по z_index
+      maintainElementsOrder();
+    };
+    
+    const removeDeletedElements = () => {
+      for (let [id, element] of elements) {
+        const cardExists = canvasStore.cards.some(card => card.id === id);
+        const noteExists = canvasStore.notes.some(note => note.id === id);
+        
+        if (!cardExists && !noteExists) {
+          toRaw(element).destroy();
+          elements.delete(id);
+        }
+      }
+    };
+    
+    const renderLinks = () => {
+      linkElements.forEach(link => link.destroy());
+      linkElements.length = 0;
+
+      canvasStore.taskLinks.forEach(link => {
+        const sourceElement = toRaw(elements.get(link.source_id))
+        const targetElement = toRaw(elements.get(link.target_id))
+
+        if (sourceElement && targetElement && sourceElement.group && targetElement.group) {
+          const line = markRaw(new Konva.Line({
+            points: [
+              sourceElement.group.x() + (sourceElement.group.children[0].width() / 2),
+              sourceElement.group.y() + (sourceElement.group.children[0].height() / 2),
+              targetElement.group.x() + (targetElement.group.children[0].width() / 2),
+              targetElement.group.y() + (targetElement.group.children[0].height() / 2)
+            ],
+            stroke: 'gray',
+            strokeWidth: 2,
+            dash: [5, 5]
+          }));
+
+          layer.value.add(line);
+          line.moveToBottom();
+          linkElements.push(line);
+        }
+      })
+    };
+    
+    const updateCardPosition = async (cardId, x, y, zIndex) => {
+      const updateData = { x, y };
+      if (zIndex !== undefined) {
+        updateData.z_index = zIndex;
+      }
+      await canvasStore.updateCard(cardId, updateData);
+    };
+    
+    const updateNotePosition = async (noteId, x, y, zIndex) => {
+      try {
+        const updateData = { x, y };
+        if (zIndex !== undefined) {
+          updateData.z_index = zIndex;
+        }
+        await canvasStore.updateNote(noteId, updateData);
+      } catch (error) {
+        console.error('Error updating note position:', error)
+      }
+    };
+    
+    const createElement = (data, type) => {
+      try {
+        let element;
+        
+        if (type === 'task') {
+          element = new TaskCard(data, elementService.value, layer.value);
+        } else if (type === 'note') {
+          element = new NoteCard(data, elementService.value, layer.value);
+        }
+        
+        if (element) {
+          element.layer.parent = { updateCardPosition, updateNotePosition };
+          const group = element.createGroup();
+          if (group && group.children && group.children.length > 0) {
+            layer.value.add(group);
+            elements.set(data.id, markRaw(element));
+          }
+        }
+      } catch (error) {
+        console.error('Error creating element:', error, data);
+      }
+    };
+    
+    const maintainElementsOrder = () => {
+      const sortedElements = elementService.value.getSortedElements();
+      
+      sortedElements.forEach(data => {
+        const element = toRaw(elements.get(data.id));
+        if (element && element.group) {
+          element.group.moveToTop();
+        }
+      });
+    };
+    
+    const addCard = async (cardData) => {
+      try {
+        if (cardData.x === undefined || cardData.y === undefined) {
+          cardData.x = 100;
+          cardData.y = 100;
+        }
+        await canvasStore.createCard(cardData)
+      } catch (error) {
+        console.error('Error adding card:', error)
+      }
+    };
+    
+    const addNote = async (noteData) => {
+      try {
+        if (noteData.x === undefined || noteData.y === undefined) {
+          noteData.x = 150;
+          noteData.y = 150;
+        }
+        await canvasStore.createNote(noteData)
+      } catch (error) {
+        console.error('Error adding note:', error)
+      }
+    };
+    
+    onMounted(() => {
+      elementService.value = new CanvasElementService(canvasStore);
+      initCanvas();
+      loadData();
+    });
+    
+    onUnmounted(() => {
+      window.removeEventListener('resize', handleResize);
+    });
+    
+    return {
+      canvasStore,
+      stage,
+      layer,
+      elementService,
+      elements,
+      linkElements,
+      initCanvas,
+      addCard,
+      addNote,
+      handleResize,
+      loadData,
+      renderCanvas,
+      updateExistingElements,
+      addNewElements,
+      removeDeletedElements,
+      renderLinks,
+      updateCardPosition,
+      updateNotePosition,
+      createElement,
+      maintainElementsOrder
+    };
   },
   mounted() {
+    this.elementService = new CanvasElementService(this.canvasStore);
     this.initCanvas()
     this.loadData()
     // Watch for changes in cards and notes
@@ -36,6 +320,31 @@ export default {
         this.layer.draw();
       })
     })
+
+    // Watch for changes in selected element
+    let previousSelectedElement = null;
+    this.canvasStore.$subscribe((mutation, state) => {
+      if (this.canvasStore.selectedElement !== previousSelectedElement) {
+        // Снимаем выделение с предыдущего элемента
+        if (previousSelectedElement) {
+          const element = toRaw(this.elements.get(previousSelectedElement.id));
+          if (element) {
+            element.removeSelection();
+          }
+        }
+
+        // Выделяем новый элемент, если он есть
+        if (this.canvasStore.selectedElement) {
+          const element = toRaw(this.elements.get(this.canvasStore.selectedElement.id));
+          if (element) {
+            element.setSelected();
+          }
+        }
+
+        this.layer.draw();
+        previousSelectedElement = this.canvasStore.selectedElement;
+      }
+    });
   },
   methods: {
     initCanvas() {
@@ -44,10 +353,17 @@ export default {
         width: window.innerWidth,
         height: window.innerHeight,
         draggable: true
-      })
+      });
 
-      this.layer = new Konva.Layer()
-      this.stage.add(this.layer)
+      this.layer = new Konva.Layer();
+      this.stage.add(this.layer);
+
+      // Клик по пустому месту - снять выделение
+      this.stage.on('click', (e) => {
+        if (e.target === this.stage) {
+          this.canvasStore.setSelectedElement(null)
+        }
+      })
 
       // Zoom functionality
       this.stage.on('wheel', (e) => {
@@ -72,26 +388,16 @@ export default {
         this.stage.batchDraw()
       })
 
-      // Handle window resize
       window.addEventListener('resize', this.handleResize)
     },
 
     async addCard(cardData) {
       try {
-        // Если в хранилище есть карточки, определяем позицию рядом с последней
-        if (this.canvasStore.cards.length > 0) {
-          const lastCard = this.canvasStore.cards[this.canvasStore.cards.length - 1]
-          cardData.x = lastCard.x + 50 // Смещаем на 50 пикселей вправо
-          cardData.y = lastCard.y + 50  // Смещаем на 50 пикселей вниз
-        } else {
-          // Если карточек нет, используем случайную позицию
-          cardData.x = Math.random() * 500
-          cardData.y = Math.random() * 500
+        if (cardData.x === undefined || cardData.y === undefined) {
+          cardData.x = 100;
+          cardData.y = 100;
         }
-        
-        const newCard = await this.canvasStore.createCard(cardData)
-        this.renderCard(newCard)
-        this.layer.draw()
+        await this.canvasStore.createCard(cardData)
       } catch (error) {
         console.error('Error adding card:', error)
       }
@@ -99,20 +405,11 @@ export default {
 
     async addNote(noteData) {
       try {
-        // Если в хранилище есть заметки, определяем позицию рядом с последней
-        if (this.canvasStore.notes.length > 0) {
-          const lastNote = this.canvasStore.notes[this.canvasStore.notes.length - 1]
-          noteData.x = lastNote.x + 50 // Смещаем на 50 пикселей вправо
-          noteData.y = lastNote.y + 50  // Смещаем на 50 пикселей вниз
-        } else {
-          // Если заметок нет, используем случайную позицию
-          noteData.x = Math.random() * 500
-          noteData.y = Math.random() * 500
+        if (noteData.x === undefined || noteData.y === undefined) {
+          noteData.x = 150;
+          noteData.y = 150;
         }
-        
-        const newNote = await this.canvasStore.createNote(noteData)
-        this.renderNote(newNote)
-        this.layer.draw()
+        await this.canvasStore.createNote(noteData)
       } catch (error) {
         console.error('Error adding note:', error)
       }
@@ -131,238 +428,192 @@ export default {
     renderCanvas() {
       // Сначала обновляем существующие элементы
       this.updateExistingElements();
-      
+
       // Затем добавляем новые элементы
       this.addNewElements();
-      
+
       // Удаляем удаленные элементы
       this.removeDeletedElements();
-      
-      // Рендерим связи
+
+      // Рендерим связи (они должны быть под элементами)
       this.renderLinks();
-      
+
+      // Поддерживаем правильный порядок элементов
+      this.maintainElementsOrder();
+
       this.layer.draw();
     },
     
     updateExistingElements() {
-      // Обновляем позиции существующих карточек
+      // Обновляем существующие карточки с использованием toRaw и markRaw
       this.canvasStore.cards.forEach(card => {
-        const existingCard = this.cardElements.get(card.id);
-        if (existingCard) {
-          // Обновляем позицию существующего элемента
-          existingCard.position({ x: card.x, y: card.y });
-          // Обновляем текст
-          const text = existingCard.findOne('Text');
-          if (text) {
-            text.text(card.title);
-          }
-          // Обновляем размеры
-          const rect = existingCard.findOne('Rect');
-          if (rect) {
-            rect.width(card.width || 300);
-            rect.height(card.height || 200);
-          }
+        const element = toRaw(this.elements.get(card.id));
+        if (element) {
+          markRaw(element).updatePosition(card.x, card.y);
         }
       });
       
-      // Обновляем позиции существующих заметок
+      // Обновляем существующие заметки с использованием toRaw и markRaw
       this.canvasStore.notes.forEach(note => {
-        const existingNote = this.noteElements.get(note.id);
-        if (existingNote) {
-          // Обновляем позицию существующего элемента
-          existingNote.position({ x: note.x, y: note.y });
-          // Обновляем текст
-          const text = existingNote.findOne('Text');
-          if (text) {
-            text.text(note.title);
-          }
-          // Обновляем размеры
-          const rect = existingNote.findOne('Rect');
-          if (rect) {
-            rect.width(note.width || 250);
-            rect.height(note.height || 150);
-          }
+        const element = toRaw(this.elements.get(note.id));
+        if (element) {
+          markRaw(element).updatePosition(note.x, note.y);
         }
       });
     },
     
     addNewElements() {
-      // Добавляем новые карточки
+      // Добавляем новые карточки с использованием toRaw и markRaw
       this.canvasStore.cards.forEach(card => {
-        if (!this.cardElements.has(card.id)) {
-          this.renderCard(card);
+        if (!toRaw(this.elements).has(card.id)) {
+          this.createElement(card, 'card');
         }
       });
       
-      // Добавляем новые заметки
+      // Добавляем новые заметки с использованием toRaw и markRaw
       this.canvasStore.notes.forEach(note => {
-        if (!this.noteElements.has(note.id)) {
-          this.renderNote(note);
+        if (!toRaw(this.elements).has(note.id)) {
+          this.createElement(note, 'note');
         }
       });
+      
+      // Восстанавливаем порядок по z_index
+      this.maintainElementsOrder();
     },
     
     removeDeletedElements() {
-      // Удаляем карточки, которых больше нет в хранилище
-      for (let [id, element] of this.cardElements) {
-        const exists = this.canvasStore.cards.some(card => card.id === id);
-        if (!exists) {
-          element.destroy();
-          this.cardElements.delete(id);
-        }
-      }
-      
-      // Удаляем заметки, которых больше нет в хранилище
-      for (let [id, element] of this.noteElements) {
-        const exists = this.canvasStore.notes.some(note => note.id === id);
-        if (!exists) {
-          element.destroy();
-          this.noteElements.delete(id);
+      // Удаляем удаленные элементы с использованием toRaw и markRaw
+      for (let [id, element] of this.elements) {
+        const cardExists = this.canvasStore.cards.some(card => card.id === id);
+        const noteExists = this.canvasStore.notes.some(note => note.id === id);
+        
+        if (!cardExists && !noteExists) {
+          const rawElement = toRaw(element);
+          if (rawElement && typeof rawElement.destroy === 'function') {
+            markRaw(rawElement).destroy();
+          }
+          this.elements.delete(id);
         }
       }
     },
 
-    renderCard(card) {
-      const group = new Konva.Group({
-        x: card.x,
-        y: card.y,
-        draggable: true,
-        id: card.id
-      })
 
-      const rect = new Konva.Rect({
-        width: card.width || 300,
-        height: card.height || 200,
-        fill: 'lightblue',
-        stroke: 'blue',
-        strokeWidth: 2,
-        cornerRadius: 5
-      })
 
-      const text = new Konva.Text({
-        text: card.title,
-        x: 10,
-        y: 10,
-        fontSize: 16,
-        fill: 'black',
-        width: card.width - 20
-      })
 
-      group.add(rect)
-      group.add(text)
 
-      // Event listeners
-      group.on('click', () => {
-        this.canvasStore.setSelectedElement(card)
-      })
 
-      group.on('dragend', () => {
-        this.updateCardPosition(card.id, group.x(), group.y())
-      })
-
-      this.layer.add(group)
-      this.cardElements.set(card.id, group)
-    },
-
-    // Добавляем методы для обновления элементов при изменении в сторе
-    updateCardElement(cardId, newCardData) {
-      // Удаляем старый элемент
-      const oldGroup = this.cardElements.get(cardId)
-      if (oldGroup) {
-        oldGroup.destroy()
-        this.cardElements.delete(cardId)
-      }
-      // Создаем новый элемент
-      this.renderCard(newCardData)
-    },
-
-    updateNoteElement(noteId, newNoteData) {
-      // Удаляем старый элемент
-      const oldGroup = this.noteElements.get(noteId)
-      if (oldGroup) {
-        oldGroup.destroy()
-        this.noteElements.delete(noteId)
-      }
-      // Создаем новый элемент
-      this.renderNote(newNoteData)
-    },
-
-    renderNote(note) {
-      const group = new Konva.Group({
-        x: note.x,
-        y: note.y,
-        draggable: true,
-        id: note.id
-      })
-
-      const rect = new Konva.Rect({
-        width: note.width || 250,
-        height: note.height || 150,
-        fill: 'lightyellow',
-        stroke: 'orange',
-        strokeWidth: 2,
-        cornerRadius: 5
-      })
-
-      const text = new Konva.Text({
-        text: note.title,
-        x: 10,
-        y: 10,
-        fontSize: 14,
-        fill: 'black',
-        width: note.width - 20
-      })
-
-      group.add(rect)
-      group.add(text)
-
-      // Event listeners
-      group.on('click', () => {
-        this.canvasStore.setSelectedElement(note)
-      })
-
-      group.on('dragend', () => {
-        this.updateNotePosition(note.id, group.x(), group.y())
-      })
-
-      this.layer.add(group)
-      this.noteElements.set(note.id, group)
-    },
 
     renderLinks() {
-      this.canvasStore.taskLinks.forEach(link => {
-        const sourceCard = this.cardElements.get(link.source_id)
-        const targetCard = this.cardElements.get(link.target_id)
+      // Очищаем существующие линии связей
+      this.linkElements.forEach(link => {
+        if (link && typeof link.destroy === 'function') {
+          link.destroy();
+        }
+      });
+      this.linkElements.length = 0;
 
-        if (sourceCard && targetCard) {
+      // Создаем новые линии связей с использованием markRaw
+      this.canvasStore.taskLinks.forEach(link => {
+        const sourceElement = toRaw(this.elements.get(link.source_id))
+        const targetElement = toRaw(this.elements.get(link.target_id))
+
+        if (sourceElement && targetElement && sourceElement.group && targetElement.group) {
+          // Создаем линию
           const line = new Konva.Line({
             points: [
-              sourceCard.x() + (sourceCard.children[0].width() / 2),
-              sourceCard.y() + (sourceCard.children[0].height() / 2),
-              targetCard.x() + (targetCard.children[0].width() / 2),
-              targetCard.y() + (targetCard.children[0].height() / 2)
+              sourceElement.group.x() + (sourceElement.group.children[0].width() / 2),
+              sourceElement.group.y() + (sourceElement.group.children[0].height() / 2),
+              targetElement.group.x() + (targetElement.group.children[0].width() / 2),
+              targetElement.group.y() + (targetElement.group.children[0].height() / 2)
             ],
             stroke: 'gray',
             strokeWidth: 2,
             dash: [5, 5]
-          })
+          });
 
-          this.layer.add(line)
-          this.linkElements.push(line)
+          // Добавляем линию на слой
+          this.layer.add(line);
+          line.moveToBottom();
+          // Добавляем линию в коллекцию
+          this.linkElements.push(line);
         }
       })
     },
 
-    async updateCardPosition(cardId, x, y) {
-      await this.canvasStore.updateCard(cardId, { x, y })
+    async updateCardPosition(cardId, x, y, zIndex) {
+      const updateData = { x, y };
+      if (zIndex !== undefined) {
+        updateData.z_index = zIndex;
+      }
+      await this.canvasStore.updateCard(cardId, updateData);
     },
 
-    async updateNotePosition(noteId, x, y) {
+    async updateNotePosition(noteId, x, y, zIndex) {
       try {
-        await this.canvasStore.updateNote(noteId, { x, y })
+        const updateData = { x, y };
+        if (zIndex !== undefined) {
+          updateData.z_index = zIndex;
+        }
+        await this.canvasStore.updateNote(noteId, updateData);
       } catch (error) {
         console.error('Error updating note position:', error)
       }
+    },
+
+
+
+    /**
+     * Создает новый элемент холста
+     */
+    createElement(data, type) {
+      try {
+        // Создаем элемент
+        let element;
+        
+        if (type === 'card') {
+          element = new TaskCard(data, this.elementService, this.layer);
+        } else if (type === 'note') {
+          element = new NoteCard(data, this.elementService, this.layer);
+        }
+        
+        if (element) {
+          // Устанавливаем родителя для элемента
+          element.layer.parent = this;
+          
+          // Создаем группу
+          const group = element.createGroup();
+          if (group && group.children && group.children.length > 0) {
+            // Добавляем группу на слой
+            this.layer.add(group);
+            // Сохраняем элемент в коллекции
+            this.elements.set(data.id, element);
+          }
+        }
+      } catch (error) {
+        console.error('Error creating element:', error, data);
+      }
+    },
+
+    /**
+     * Поддерживает порядок активных элементов на переднем плане
+     */
+
+
+    /**
+     * Поддерживает правильный порядок элементов по z_index
+     */
+    maintainElementsOrder() {
+      // Получаем отсортированные элементы
+      const sortedElements = this.elementService.getSortedElements();
+      
+      sortedElements.forEach(data => {
+        // Получаем элемент
+        const element = this.elements.get(data.id);
+        if (element && element.group) {
+          // Перемещаем группу на передний план
+          element.group.moveToTop();
+        }
+      });
     }
   },
 
