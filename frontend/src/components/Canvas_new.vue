@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="canvas-container">
     <div ref="stageContainer" class="stage-container"></div>
   </div>
@@ -35,7 +35,7 @@ const initCanvas = () => {
   stage.value = stageObj;
   layer.value = layerObj;
 
-  // Клик по пустому месту - снять выделение
+  // РљР»РёРє РїРѕ РїСѓСЃС‚РѕРјСѓ РјРµСЃС‚Сѓ - СЃРЅСЏС‚СЊ РІС‹РґРµР»РµРЅРёРµ
   stage.value.on('click', (e) => {
     if (e.target === stage.value) {
       canvasStore.setSelectedElement(null);
@@ -299,3 +299,4 @@ onUnmounted(() => {
   height: 100%;
 }
 </style>
+

@@ -1,0 +1,119 @@
+@startuml
+skinparam backgroundColor white
+skinparam roundCorner 20
+title Платформа Холст - Диаграмма компонентов
+
+' ========== FRONTEND COMPONENTS ==========
+
+rectangle "App.vue" as app {
+  rectangle "Toolbar.vue" as toolbar
+  rectangle "router-view" as router
+}
+
+rectangle "CanvasView.vue" as canvas_view {
+  rectangle "Toolbar.vue"
+  rectangle "Canvas.vue" as canvas
+}
+
+rectangle "GraphView.vue" as graph
+
+' ========== FRONTEND MODULES ==========
+
+rectangle "stores/" as stores {
+  rectangle "canvas.js (Pinia)" as pinia
+}
+
+rectangle "components/" as components {
+  rectangle "Toolbar.vue"
+  rectangle "Canvas.vue"
+}
+
+rectangle "views/" as views {
+  rectangle "CanvasView.vue"
+  rectangle "GraphView.vue"
+}
+
+rectangle "services/" as services {
+  rectangle "CanvasElementService.js" as svc
+}
+
+rectangle "classes/" as classes {
+  rectangle "CanvasElement.js" as base_class
+  rectangle "TaskCard.js" as task_class
+  rectangle "NoteCard.js" as note_class
+}
+
+rectangle "router/" as router {
+  rectangle "index.js" as routes
+}
+
+' ========== BACKEND MODULES ==========
+
+rectangle "Backend API" as backend {
+  rectangle "main.py (FastAPI)" as main
+  rectangle "models/" as models {
+    rectangle "BaseCard"
+    rectangle "Task"
+    rectangle "Note"
+    rectangle "File"
+    rectangle "TaskLink"
+    rectangle "NoteLink"
+    rectangle "EventLog"
+  }
+  rectangle "schemas/" as schemas {
+    rectangle "BaseCardSchema"
+    rectangle "TaskSchema"
+    rectangle "NoteSchema"
+  }
+  rectangle "database.py" as db
+}
+
+' ========== INFRASTRUCTURE ==========
+
+rectangle "Docker Services" as docker {
+  rectangle "PostgreSQL" as pg
+  rectangle "Backend (FastAPI)" as py
+  rectangle "Frontend (NGINX)" as fe
+  rectangle "Voice STT (Flask)" as voice
+  rectangle "Nginx Reverse Proxy" as ngx
+}
+
+' ========== RELATIONSHIPS ==========
+
+app --> toolbar
+app --> router
+
+canvas_view --> Toolbar
+canvas_view --> Canvas
+
+app ..> canvas_view
+app ..> graph
+
+router --> canvas_view
+router --> graph
+
+canvas ..> pinia
+canvas ..> svc
+canvas ..> task_class
+canvas ..> note_class
+
+svc ..> base_class
+svc ..> pinia
+
+task_class ..> base_class
+note_class ..> base_class
+
+main --> models
+main --> schemas
+main --> db
+
+backend --> docker : runs in
+frontend --> docker : runs in
+
+ngx --> py
+ngx --> fe
+ngx --> voice
+
+pg --> py : connection
+
+@enduml

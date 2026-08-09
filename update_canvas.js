@@ -1,6 +1,16 @@
-<template>
+const fs = require('fs');
+const path = require('path');
+
+const filePath = path.join(__dirname, 'frontend', 'src', 'components', 'Canvas.vue');
+
+const newContent = `<template>
   <div class="canvas-container">
     <div ref="stageContainer" class="stage-container"></div>
+    <EditorPanel
+      v-if="selectedElement"
+      :element="selectedElement"
+      @close="closeEditor"
+    />
   </div>
 </template>
 
@@ -11,6 +21,7 @@ import { NoteCard } from '../classes/NoteCard.js';
 import { TaskCard } from '../classes/TaskCard.js';
 import { CanvasElementService } from '../services/CanvasElementService.js';
 import { useCanvasStore } from '../stores/canvas';
+import EditorPanel from './EditorPanel.vue';
 
 const stageContainer = ref(null);
 const stage = ref(null);
@@ -18,6 +29,7 @@ const layer = ref(null);
 const elementService = ref(null);
 const elements = new Map();
 const linkElements = [];
+const selectedElement = ref(null);
 
 const canvasStore = useCanvasStore();
 
@@ -235,6 +247,11 @@ const addNote = async (noteData) => {
   }
 };
 
+const closeEditor = () => {
+  canvasStore.setSelectedElement(null);
+  selectedElement.value = null;
+};
+
 // Watch for store changes
 watch(() => canvasStore.cards.length, () => {
   canvasStore.$nextTick(() => {
@@ -259,6 +276,21 @@ watch(() => canvasStore.selectedElement, (newElement) => {
   }
 
   if (newElement) {
+    // Определяем тип элемента
+    let type = 'task';
+    if (newElement.note_type !== undefined) {
+      type = 'note';
+    } else if (newElement.task_type !== undefined) {
+      type = 'task';
+    }
+    
+    const enrichedElement = {
+      ...newElement,
+      type: type
+    };
+    
+    selectedElement.value = enrichedElement;
+    
     const element = toRaw(elements.get(newElement.id));
     if (element) {
       element.setSelected();
@@ -299,3 +331,7 @@ onUnmounted(() => {
   height: 100%;
 }
 </style>
+`;
+
+fs.writeFileSync(filePath, newContent, 'utf8');
+console.log('Canvas.vue updated successfully!');

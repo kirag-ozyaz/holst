@@ -1,0 +1,148 @@
+@startuml
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam roundCorner 20
+
+title Платформа Холст - Диаграмма классов
+
+' ========== BACKEND MODELS ==========
+
+class BaseCard <<abstract>> {
+  +String id
+  +String title
+  +JSON content
+  +Integer x, y
+  +Integer z_index
+  +Integer width, height
+  +DateTime created_at
+  +DateTime updated_at
+}
+
+class Task {
+  +String parent_id
+  +String task_type
+  +get_subtasks()
+  +get_notes()
+  +get_outgoing_links()
+  +get_incoming_links()
+}
+
+class Note {
+  +String task_id
+  +String note_type
+  +get_task()
+  +get_files()
+  +get_outgoing_links()
+  +get_incoming_links()
+}
+
+class File {
+  +Integer id
+  +String filename
+  +String filepath
+  +Integer file_size
+  +String mime_type
+  +String base_card_id
+  +String task_id
+  +String note_id
+  +DateTime created_at
+}
+
+class TaskLink {
+  +Integer id
+  +String source_id
+  +String target_id
+  +String link_type
+  +String link_target_type
+  +DateTime created_at
+}
+
+class NoteLink {
+  +Integer id
+  +String source_id
+  +String target_id
+  +String link_type
+  +DateTime created_at
+}
+
+class EventLog {
+  +Integer id
+  +String action
+  +String entity_type
+  +String entity_id
+  +String user_id
+  +JSON old_data
+  +JSON new_data
+  +DateTime timestamp
+  +String details
+}
+
+' ========== FRONTEND CLASSES ==========
+
+class CanvasElement {
+  +String id
+  +String type
+  +String title
+  +String content
+  +Integer x, y
+  +Integer z_index
+  +group: Konva.Group
+  +layer: Konva.Layer
+  +canvasService: CanvasElementService
+  +createGroup()
+  +updatePosition(x, y)
+  +bringToFront()
+  +onDragStart()
+  +onDragEnd()
+}
+
+class TaskCard extends CanvasElement {
+  +getType(): 'task'
+  +getTaskType(): String
+}
+
+class NoteCard extends CanvasElement {
+  +getType(): 'note'
+  +getContent(): JSON
+}
+
+class CanvasElementService {
+  +getSortedElements(): Array
+  +getMaxZIndex(): Integer
+  +bringToFront(elementId, type)
+}
+
+' ========== DIAGRAM RELATIONSHIPS ==========
+
+BaseCard <|-- Task
+BaseCard <|-- Note
+Task "1" *-- "0..*" Task : subtasks
+Task "1" o-- "0..*" Note : notes
+Task "1" o-- "0..*" File : files
+Note "1" o-- "0..*" File : files
+Task "1" o-- "0..*" TaskLink : outgoing
+Task "0..*" o-- "1" Task : source (TaskLink)
+Task "0..*" o-- "1" Task : target (TaskLink)
+Note "1" o-- "0..*" NoteLink : outgoing
+Note "0..*" o-- "1" Note : source (NoteLink)
+Note "0..*" o-- "1" Note : target (NoteLink)
+
+CanvasElement <|-- TaskCard
+CanvasElement <|-- NoteCard
+TaskCard ..> CanvasElementService : uses
+NoteCard ..> CanvasElementService : uses
+Canvas ..> TaskCard
+Canvas ..> NoteCard
+Canvas ..> CanvasElementService
+
+note right::File
+  Файлы могут быть привязаны
+  к задачам или заметкам
+end note
+
+note left::Task
+  Задачи могут быть вложенными
+  через parent_id
+end note
+
+@enduml

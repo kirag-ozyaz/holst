@@ -1,21 +1,30 @@
 <template>
   <div class="canvas-view">
     <Toolbar />
-    <Canvas />
+    <Canvas ref="canvas" />
   </div>
 </template>
 
-<script>
-import Toolbar from '../components/Toolbar.vue'
-import Canvas from '../components/Canvas.vue'
+<script setup>
+import { ref } from 'vue';
+import Toolbar from '../components/Toolbar.vue';
+import Canvas from '../components/Canvas.vue';
 
-export default {
-  name: 'CanvasView',
-  components: {
-    Toolbar,
-    Canvas
+const canvas = ref(null);
+
+const handleAddCard = (cardData) => {
+  if (canvas.value) {
+    canvas.value.addCard(cardData);
   }
-}
+};
+
+const handleAddNote = (noteData) => {
+  if (canvas.value) {
+    canvas.value.addNote(noteData);
+  }
+};
+
+defineExpose({ handleAddCard, handleAddNote });
 </script>
 
 <style scoped>

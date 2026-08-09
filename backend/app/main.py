@@ -10,33 +10,39 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from .database import engine, get_db
-from .models import Task, EventLog, File, Note, NoteLink, TaskLink
+from .models import Task, Note, EventLog, File, NoteLink, TaskLink
 
-# Create tables
-try:
-    Task.__table__.create(bind=engine, checkfirst=True)
-    Note.__table__.create(bind=engine, checkfirst=True)
-    File.__table__.create(bind=engine, checkfirst=True)
-    TaskLink.__table__.create(bind=engine, checkfirst=True)
-    NoteLink.__table__.create(bind=engine, checkfirst=True)
-    EventLog.__table__.create(bind=engine, checkfirst=True)
-except Exception as e:
-    print(f"Error creating tables: {e}")
-    import time
-    time.sleep(5)  # Wait for DB to be ready
-    Task.__table__.create(bind=engine, checkfirst=True)
-    Note.__table__.create(bind=engine, checkfirst=True)
-    File.__table__.create(bind=engine, checkfirst=True)
-    TaskLink.__table__.create(bind=engine, checkfirst=True)
-    NoteLink.__table__.create(bind=engine, checkfirst=True)
-    EventLog.__table__.create(bind=engine, checkfirst=True)
+# Create tables only if DB is available
+import time
+
+def create_tables_if_needed():
+    """Создаёт таблицы только если подключение к БД доступно"""
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            Task.__table__.create(bind=engine, checkfirst=True)
+            Note.__table__.create(bind=engine, checkfirst=True)
+            File.__table__.create(bind=engine, checkfirst=True)
+            TaskLink.__table__.create(bind=engine, checkfirst=True)
+            NoteLink.__table__.create(bind=engine, checkfirst=True)
+            EventLog.__table__.create(bind=engine, checkfirst=True)
+            print("Tables created successfully")
+            return
+        except Exception as e:
+            print(f"Attempt {attempt + 1}/{max_retries} - Error creating tables: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(3)
+            else:
+                print("Warning: Could not connect to database. Tables will be created on first connection.")
+
+create_tables_if_needed()
 
 app = FastAPI(title="Холст API", version="1.0.0")
 
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://localhost:80", "http://localhost:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,8 +68,8 @@ def get_next_z_index(db: Session):
     max_note_z = db.query(Note).order_by(Note.z_index.desc()).first()
     
     max_z = 0
-    if max_card_z and max_card_z.z_index:
-        max_z = max(max_z, max_card_z.z_index)
+    if max_task_z and max_task_z.z_index:
+        max_z = max(max_z, max_task_z.z_index)
     if max_note_z and max_note_z.z_index:
         max_z = max(max_z, max_note_z.z_index)
     

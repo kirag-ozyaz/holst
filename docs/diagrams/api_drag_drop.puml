@@ -1,0 +1,55 @@
+@startuml
+skinparam backgroundColor white
+skinparam roundCorner 20
+title Перемещение задачи (drag & drop)
+
+participant User as "Пользователь"
+participant Canvas as "Canvas.vue"
+participant TaskCard as "TaskCard.js"
+participant Konva as "Konva Layer"
+participant Store as "Pinia Store"
+participant API as "CanvasElementService"
+participant Backend as "FastAPI"
+participant DB as "PostgreSQL"
+
+User -> Canvas : нажимает на карточку
+Canvas -> TaskCard : onMouseDown
+TaskCard -> Konva : node.on('mousedown')
+
+User -> Canvas : перетаскивает карточку
+TaskCard -> Konva : node.on('dragmove')
+Konva -> Konva : update x, y (локально)
+
+User -> Canvas : отпускает карточку
+TaskCard -> Konva : node.on('dragend')
+
+alt new position != old position
+  TaskCard -> API : bringToFront()
+  API -> API : getMaxZIndex() + 1
+  API -> TaskCard : set z_index = max + 1
+  
+  TaskCard -> Store : updateCard(id, {x, y, z_index})
+  Store -> API : запрос PUT /api/cards/{id}
+  API -> Backend : PUT /api/cards/{id} {x, y, z_index}
+  Backend -> DB : UPDATE tasks SET x, y, z_index
+  DB --> Backend : OK
+  Backend --> API : 200 OK
+  API --> Store : updated
+  
+  Store --> Canvas : $subscribe
+  Canvas -> Canvas : layer.draw()
+  
+  opt Bring to front
+    TaskCard -> Konva : node.moveToTop()
+  end
+else Position unchanged
+  TaskCard -> TaskCard : skip update
+end
+
+note right of Store
+  Pinia store обновляет
+  реактивные состояния
+  и вызывает подписчиков
+end note
+
+@enduml

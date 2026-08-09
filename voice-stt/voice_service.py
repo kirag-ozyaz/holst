@@ -27,33 +27,34 @@ def transcribe():
     audio_file = request.files['audio']
 
     # Save audio temporarily
-    temp_path = f"temp_{os.getpid()}.wav"
+    temp_path = os.path.join("temp", f"temp_{os.getpid()}.wav")
+    Path("temp").mkdir(exist_ok=True)
     audio_file.save(temp_path)
 
     try:
         # Initialize recognizer
         rec = vosk.KaldiRecognizer(model, 16000)
 
-        # Read and process audio
+        # Read and process audio in chunks
         with open(temp_path, "rb") as f:
             data = f.read()
 
-        if rec.AcceptWaveform(data):
-            result = json.loads(rec.Result())
-            text = result.get("text", "")
-        else:
-            result = json.loads(rec.PartialResult())
-            text = result.get("partial", "")
+        # Process in 4000 byte chunks (100ms at 16kHz, 16-bit)
+        chunk_size = 4000
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i + chunk_size]
+            rec.AcceptWaveform(chunk)
 
-        # Clean up
-        os.remove(temp_path)
+        result = json.loads(rec.FinalResult())
+        text = result.get("text", "")
 
         return jsonify({"text": text})
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)

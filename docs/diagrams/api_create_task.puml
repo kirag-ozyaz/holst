@@ -1,0 +1,47 @@
+@startuml
+skinparam backgroundColor white
+skinparam roundCorner 20
+title Создание и отображение задачи
+
+participant User as "Пользователь"
+participant Toolbar as "Toolbar.vue"
+participant Canvas as "Canvas.vue"
+participant Store as "Pinia Store"
+participant API as "CanvasElementService"
+participant Backend as "FastAPI"
+participant DB as "PostgreSQL"
+
+User -> Toolbar : кликает "➕ Задача"
+Toolbar -> Canvas : emits add-card
+Canvas -> Store : createCard({title, x, y})
+Store -> API : запрос POST /api/cards
+
+alt Успешно
+  API -> Backend : POST /api/cards {title, x, y, z_index}
+  Backend -> DB : INSERT INTO tasks
+  DB --> Backend : возвращает Task
+  Backend --> API : 200 OK {Task}
+  API --> Store : store updated
+  
+  par Parallel updates
+    Store --> Canvas : $subscribe (cards changed)
+    Canvas -> Canvas : addNewElements()
+    Canvas -> Canvas : createElement(card, 'task')
+    Canvas -> Canvas : TaskCard.createGroup()
+    Canvas -> Canvas : layer.add(group)
+    Canvas -> Canvas : layer.draw()
+  end
+else Ошибка
+  Backend --> API : 500 Error
+  API --> Store : error
+  Store --> Canvas : показать ошибку
+end
+
+note right of Canvas
+  1. TaskCard создаёт Konva.Group
+  2. Рисуется на canvas
+  3. z-index обновляется
+  4. Элемент отображается
+end note
+
+@enduml
