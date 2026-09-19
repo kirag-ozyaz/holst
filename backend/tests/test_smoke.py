@@ -137,8 +137,29 @@ def test_cascade_delete_task_with_subtasks_and_note():
     ).json()
     r = client.delete(f"/api/cards/{parent['id']}", params={"cascade": True})
     assert r.status_code == 200
+    assert r.json().get("soft") is True
     assert client.get(f"/api/cards/{parent['id']}").status_code == 404
     assert client.get(f"/api/cards/{child['id']}").status_code == 404
+    assert client.get(f"/api/notes/{note['id']}").status_code == 404
+    listed_cards = client.get("/api/cards").json()
+    listed_notes = client.get("/api/notes").json()
+    ids = {c["id"] for c in listed_cards}
+    note_ids = {n["id"] for n in listed_notes}
+    assert parent["id"] not in ids
+    assert child["id"] not in ids
+    assert note["id"] not in note_ids
+
+
+def test_soft_delete_hides_from_list_but_not_hard_removed():
+    card = client.post("/api/cards", json={"title": "ToRemove"}).json()
+    note = client.post("/api/notes", json={"title": "NoteRemove"}).json()
+    r_card = client.delete(f"/api/cards/{card['id']}")
+    r_note = client.delete(f"/api/notes/{note['id']}")
+    assert r_card.status_code == 200
+    assert r_note.status_code == 200
+    assert card["id"] not in {c["id"] for c in client.get("/api/cards").json()}
+    assert note["id"] not in {n["id"] for n in client.get("/api/notes").json()}
+    assert client.get(f"/api/cards/{card['id']}").status_code == 404
     assert client.get(f"/api/notes/{note['id']}").status_code == 404
 
 

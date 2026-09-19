@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
 
 from .database import engine
@@ -67,10 +67,10 @@ def backfill_numbers_and_dates(db: Session) -> None:
 
 
 def next_task_number(db: Session) -> int:
-    row = db.query(Task.number).order_by(Task.number.desc()).first()
-    return (row[0] if row and row[0] is not None else 0) + 1
+    max_num = db.query(func.max(Task.number)).scalar()
+    return (int(max_num) if max_num is not None else 0) + 1
 
 
 def next_note_number(db: Session) -> int:
-    row = db.query(Note.number).order_by(Note.number.desc()).first()
-    return (row[0] if row and row[0] is not None else 0) + 1
+    max_num = db.query(func.max(Note.number)).scalar()
+    return (int(max_num) if max_num is not None else 0) + 1

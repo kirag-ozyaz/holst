@@ -4,6 +4,7 @@
     <TaskJournal />
     <Canvas ref="canvas" />
     <EditorPanel v-if="canvasStore.selectedElement" :element="canvasStore.selectedElement" />
+    <CanvasContextMenu />
     <div v-if="canvasStore.linkMode" class="link-hint">
       {{ linkHintText }}
     </div>
@@ -16,6 +17,7 @@ import Toolbar from '../components/Toolbar.vue';
 import TaskJournal from '../components/TaskJournal.vue';
 import Canvas from '../components/Canvas.vue';
 import EditorPanel from '../components/EditorPanel.vue';
+import CanvasContextMenu from '../components/CanvasContextMenu.vue';
 import { useCanvasStore } from '../stores/canvas';
 
 const canvasStore = useCanvasStore();

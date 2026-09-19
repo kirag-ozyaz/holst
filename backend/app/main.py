@@ -16,10 +16,11 @@ from .card_numbers import (
     next_note_number,
     next_task_number,
 )
+from .soft_delete import ensure_deleted_at_columns
 from .database import SessionLocal, engine, get_db
 from .models import Task, Note, EventLog, File, NoteLink, TaskLink
 
-IMMUTABLE_CARD_FIELDS = frozenset({"id", "number", "created_at"})
+IMMUTABLE_CARD_FIELDS = frozenset({"id", "number", "created_at", "deleted_at"})
 
 # Create tables only if DB is available
 import time
@@ -49,6 +50,7 @@ def sync_card_number_schema():
     """Ensure number column exists and backfill legacy rows."""
     try:
         ensure_number_columns()
+        ensure_deleted_at_columns()
         db = SessionLocal()
         try:
             backfill_numbers_and_dates(db)
@@ -60,6 +62,34 @@ def sync_card_number_schema():
 
 create_tables_if_needed()
 sync_card_number_schema()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _active_tasks(db: Session):
+    return db.query(Task).filter(Task.deleted_at.is_(None))
+
+
+def _active_notes(db: Session):
+    return db.query(Note).filter(Note.deleted_at.is_(None))
+
+
+def _get_active_task(db: Session, task_id: str) -> Optional[Task]:
+    return _active_tasks(db).filter(Task.id == task_id).first()
+
+
+def _get_active_note(db: Session, note_id: str) -> Optional[Note]:
+    return _active_notes(db).filter(Note.id == note_id).first()
+
+
+def _active_task_ids(db: Session) -> set:
+    return {row[0] for row in db.query(Task.id).filter(Task.deleted_at.is_(None)).all()}
+
+
+def _active_note_ids(db: Session) -> set:
+    return {row[0] for row in db.query(Note.id).filter(Note.deleted_at.is_(None)).all()}
 
 APP_VERSION = os.getenv("APP_VERSION", "0.1.0-phase-0-1")
 APP_PHASE = os.getenv("APP_PHASE", "0-1")
@@ -114,8 +144,8 @@ def health_check():
 
 # Helper function to get next z_index
 def get_next_z_index(db: Session):
-    max_task_z = db.query(Task).order_by(Task.z_index.desc()).first()
-    max_note_z = db.query(Note).order_by(Note.z_index.desc()).first()
+    max_task_z = _active_tasks(db).order_by(Task.z_index.desc()).first()
+    max_note_z = _active_notes(db).order_by(Note.z_index.desc()).first()
     
     max_z = 0
     if max_task_z and max_task_z.z_index:
@@ -150,18 +180,18 @@ def create_card(card_data: dict, db: Session = Depends(get_db)):
 
 @app.get("/api/cards")
 def get_cards(db: Session = Depends(get_db)):
-    return db.query(Task).all()
+    return _active_tasks(db).all()
 
 @app.get("/api/cards/{card_id}")
 def get_card(card_id: str, db: Session = Depends(get_db)):
-    card = db.query(Task).filter(Task.id == card_id).first()
+    card = _get_active_task(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
     return card
 
 @app.put("/api/cards/{card_id}")
 def update_card(card_id: str, card_data: dict, db: Session = Depends(get_db)):
-    card = db.query(Task).filter(Task.id == card_id).first()
+    card = _get_active_task(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
@@ -175,60 +205,61 @@ def update_card(card_id: str, card_data: dict, db: Session = Depends(get_db)):
     db.refresh(card)
     return card
 
-def _clear_links_for_entity(db: Session, entity_id: str) -> None:
-    db.query(TaskLink).filter(
-        (TaskLink.source_id == entity_id) | (TaskLink.target_id == entity_id)
-    ).delete(synchronize_session=False)
-    db.query(NoteLink).filter(
-        (NoteLink.source_id == entity_id) | (NoteLink.target_id == entity_id)
-    ).delete(synchronize_session=False)
-
-
-def _delete_note_cascade(note_id: str, db: Session, visited: Optional[set] = None) -> None:
+def _mark_note_deleted(note_id: str, db: Session, visited: Optional[set] = None) -> None:
     if visited is None:
         visited = set()
     if note_id in visited:
         return
     visited.add(note_id)
     for link in db.query(NoteLink).filter(NoteLink.source_id == note_id).all():
-        _delete_note_cascade(link.target_id, db, visited)
-    note = db.query(Note).filter(Note.id == note_id).first()
+        _mark_note_deleted(link.target_id, db, visited)
+    note = db.query(Note).filter(Note.id == note_id, Note.deleted_at.is_(None)).first()
     if not note:
         return
-    _clear_links_for_entity(db, note_id)
-    db.delete(note)
+    note.deleted_at = _utc_now()
 
 
-def _delete_task_cascade(task_id: str, db: Session) -> None:
-    for child in db.query(Task).filter(Task.parent_id == task_id).all():
-        _delete_task_cascade(child.id, db)
-    for note in db.query(Note).filter(Note.task_id == task_id).all():
-        _delete_note_cascade(note.id, db)
+def _mark_task_deleted_cascade(task_id: str, db: Session) -> None:
+    for child in db.query(Task).filter(
+        Task.parent_id == task_id, Task.deleted_at.is_(None)
+    ).all():
+        _mark_task_deleted_cascade(child.id, db)
+    for note in db.query(Note).filter(
+        Note.task_id == task_id, Note.deleted_at.is_(None)
+    ).all():
+        _mark_note_deleted(note.id, db)
     for link in db.query(TaskLink).filter(TaskLink.source_id == task_id).all():
         if link.link_target_type in ("note", "card"):
-            linked_note = db.query(Note).filter(Note.id == link.target_id).first()
+            linked_note = db.query(Note).filter(
+                Note.id == link.target_id, Note.deleted_at.is_(None)
+            ).first()
             if linked_note:
-                _delete_note_cascade(linked_note.id, db)
-    task = db.query(Task).filter(Task.id == task_id).first()
+                _mark_note_deleted(linked_note.id, db)
+    task = db.query(Task).filter(Task.id == task_id, Task.deleted_at.is_(None)).first()
     if not task:
         return
-    _clear_links_for_entity(db, task_id)
-    db.delete(task)
+    task.deleted_at = _utc_now()
+
+
+def _mark_task_deleted(task_id: str, db: Session) -> None:
+    task = db.query(Task).filter(Task.id == task_id, Task.deleted_at.is_(None)).first()
+    if not task:
+        return
+    task.deleted_at = _utc_now()
 
 
 @app.delete("/api/cards/{card_id}")
 def delete_card(card_id: str, cascade: bool = False, db: Session = Depends(get_db)):
-    card = db.query(Task).filter(Task.id == card_id).first()
+    card = _get_active_task(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
     if cascade:
-        _delete_task_cascade(card_id, db)
+        _mark_task_deleted_cascade(card_id, db)
     else:
-        _clear_links_for_entity(db, card_id)
-        db.delete(card)
+        _mark_task_deleted(card_id, db)
     db.commit()
-    return {"message": "Карточка удалена", "cascade": cascade}
+    return {"message": "Карточка удалена", "cascade": cascade, "soft": True}
 
 # Notes CRUD
 @app.post("/api/notes")
@@ -255,18 +286,18 @@ def create_note(note_data: dict, db: Session = Depends(get_db)):
 
 @app.get("/api/notes")
 def get_notes(db: Session = Depends(get_db)):
-    return db.query(Note).all()
+    return _active_notes(db).all()
 
 @app.get("/api/notes/{note_id}")
 def get_note(note_id: str, db: Session = Depends(get_db)):
-    note = db.query(Note).filter(Note.id == note_id).first()
+    note = _get_active_note(db, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Заметка не найдена")
     return note
 
 @app.put("/api/notes/{note_id}")
 def update_note(note_id: str, note_data: dict, db: Session = Depends(get_db)):
-    note = db.query(Note).filter(Note.id == note_id).first()
+    note = _get_active_note(db, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Заметка не найдена")
 
@@ -282,17 +313,16 @@ def update_note(note_id: str, note_data: dict, db: Session = Depends(get_db)):
 
 @app.delete("/api/notes/{note_id}")
 def delete_note(note_id: str, cascade: bool = False, db: Session = Depends(get_db)):
-    note = db.query(Note).filter(Note.id == note_id).first()
+    note = _get_active_note(db, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Заметка не найдена")
 
     if cascade:
-        _delete_note_cascade(note_id, db)
+        _mark_note_deleted(note_id, db)
     else:
-        _clear_links_for_entity(db, note_id)
-        db.delete(note)
+        note.deleted_at = _utc_now()
     db.commit()
-    return {"message": "Заметка удалена", "cascade": cascade}
+    return {"message": "Заметка удалена", "cascade": cascade, "soft": True}
 
 def _task_link_would_cycle(db: Session, source_id: str, target_id: str) -> bool:
     """True if adding edge source -> target closes a cycle among tasks."""
@@ -325,12 +355,12 @@ def create_task_link(link_data: dict, db: Session = Depends(get_db)):
         link_target_type = "task"
     
     # Validate that source and target exist
-    source_card = db.query(Task).filter(Task.id == source_id).first()
+    source_card = _get_active_task(db, source_id)
     if not source_card:
         raise HTTPException(status_code=404, detail="Source card not found")
     
     if link_target_type == "task":
-        target_card = db.query(Task).filter(Task.id == target_id).first()
+        target_card = _get_active_task(db, target_id)
         if not target_card:
             raise HTTPException(status_code=404, detail="Target card not found")
         if source_id == target_id:
@@ -338,7 +368,7 @@ def create_task_link(link_data: dict, db: Session = Depends(get_db)):
         if _task_link_would_cycle(db, source_id, target_id):
             raise HTTPException(status_code=400, detail="Link would create a cycle")
     elif link_target_type == "note":
-        target_note = db.query(Note).filter(Note.id == target_id).first()
+        target_note = _get_active_note(db, target_id)
         if not target_note:
             raise HTTPException(status_code=404, detail="Target note not found")
     else:
@@ -357,9 +387,36 @@ def create_task_link(link_data: dict, db: Session = Depends(get_db)):
     db.refresh(link)
     return link
 
+def _filter_active_task_links(db: Session) -> List:
+    task_ids = _active_task_ids(db)
+    note_ids = _active_note_ids(db)
+    result = []
+    for link in db.query(TaskLink).all():
+        if link.source_id not in task_ids:
+            continue
+        ltt = link.link_target_type
+        if ltt == "note":
+            if link.target_id not in note_ids:
+                continue
+        else:
+            if link.target_id not in task_ids:
+                continue
+        result.append(link)
+    return result
+
+
+def _filter_active_note_links(db: Session) -> List:
+    note_ids = _active_note_ids(db)
+    return [
+        link
+        for link in db.query(NoteLink).all()
+        if link.source_id in note_ids and link.target_id in note_ids
+    ]
+
+
 @app.get("/api/task-links")
 def get_task_links(db: Session = Depends(get_db)):
-    return db.query(TaskLink).all()
+    return _filter_active_task_links(db)
 
 @app.delete("/api/task-links/{link_id}")
 def delete_task_link(link_id: int, db: Session = Depends(get_db)):
@@ -386,7 +443,7 @@ def create_note_link(link_data: dict, db: Session = Depends(get_db)):
 
 @app.get("/api/note-links")
 def get_note_links(db: Session = Depends(get_db)):
-    return db.query(NoteLink).all()
+    return _filter_active_note_links(db)
 
 @app.delete("/api/note-links/{link_id}")
 def delete_note_link(link_id: int, db: Session = Depends(get_db)):
@@ -402,7 +459,7 @@ def delete_note_link(link_id: int, db: Session = Depends(get_db)):
 @app.post("/api/cards/{card_id}/files")
 def upload_card_file(card_id: str, file: UploadFile = File(), db: Session = Depends(get_db)):
     # Check if card exists
-    card = db.query(Task).filter(Task.id == card_id).first()
+    card = _get_active_task(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
@@ -442,17 +499,17 @@ def get_max_z_index(db: Session = Depends(get_db)):
 @app.get("/api/search")
 def search(q: str, db: Session = Depends(get_db)):
     # Simple search implementation
-    cards = db.query(Task).filter(Task.title.ilike(f"%{q}%")).all()
-    notes = db.query(Note).filter(Note.title.ilike(f"%{q}%")).all()
+    cards = _active_tasks(db).filter(Task.title.ilike(f"%{q}%")).all()
+    notes = _active_notes(db).filter(Note.title.ilike(f"%{q}%")).all()
     return {"cards": cards, "notes": notes}
 
 # Graph
 @app.get("/api/graph")
 def get_graph(db: Session = Depends(get_db)):
-    cards = db.query(Task).all()
-    notes = db.query(Note).all()
-    task_links = db.query(TaskLink).all()
-    note_links = db.query(NoteLink).all()
+    cards = _active_tasks(db).all()
+    notes = _active_notes(db).all()
+    task_links = _filter_active_task_links(db)
+    note_links = _filter_active_note_links(db)
 
     nodes = []
     edges = []
