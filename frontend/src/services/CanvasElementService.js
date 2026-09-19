@@ -7,6 +7,7 @@ export class CanvasElementService {
     this.positionHandlers = null;
     this.openContextMenu = null;
     this.onEditorAnchorRequest = null;
+    this.onLinksRenderRequest = null;
   }
 
   setPositionHandlers(handlers) {
@@ -19,6 +20,16 @@ export class CanvasElementService {
 
   setEditorAnchorRequest(handler) {
     this.onEditorAnchorRequest = handler;
+  }
+
+  setLinksRenderRequest(handler) {
+    this.onLinksRenderRequest = handler;
+  }
+
+  requestLinksRender() {
+    if (this.onLinksRenderRequest) {
+      this.onLinksRenderRequest();
+    }
   }
 
   requestEditorAnchor(elementId) {

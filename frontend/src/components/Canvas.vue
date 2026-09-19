@@ -102,6 +102,13 @@ const initCanvas = () => {
       return newBox;
     }
   }));
+  tr.on('transform', () => {
+    renderLinks();
+    layerObj.batchDraw();
+    if (canvasStore.selectedElement?.id) {
+      publishEditorAnchor(canvasStore.selectedElement.id);
+    }
+  });
   tr.on('transformend', onTransformEnd);
   layerObj.add(tr);
   transformer.value = tr;
@@ -236,8 +243,10 @@ const removeDeletedElements = () => {
   }
 };
 
-/** Point on rect border from center toward (towardX, towardY). */
-const rectEdgePoint = (element, towardX, towardY) => {
+const EDGE_GAP = 4;
+
+/** Point on rect border from center toward (towardX, towardY), inset by gap from stroke. */
+const rectEdgePoint = (element, towardX, towardY, outwardGap = 0) => {
   const shape = element.group.children[0];
   const hw = shape.width() / 2;
   const hh = shape.height() / 2;
@@ -245,11 +254,20 @@ const rectEdgePoint = (element, towardX, towardY) => {
   const cy = element.group.y() + hh;
   const dx = towardX - cx;
   const dy = towardY - cy;
-  if (dx === 0 && dy === 0) {
-    return { x: cx, y: cy };
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) {
+    return null;
   }
   const t = Math.min(hw / Math.abs(dx), hh / Math.abs(dy));
-  return { x: cx + dx * t, y: cy + dy * t };
+  const edgeX = cx + dx * t;
+  const edgeY = cy + dy * t;
+  if (!outwardGap) {
+    return { x: edgeX, y: edgeY };
+  }
+  const len = Math.hypot(dx, dy) || 1;
+  return {
+    x: edgeX + (dx / len) * outwardGap,
+    y: edgeY + (dy / len) * outwardGap
+  };
 };
 
 const linkEndpoints = (sourceElement, targetElement, pointerLength) => {
@@ -260,18 +278,27 @@ const linkEndpoints = (sourceElement, targetElement, pointerLength) => {
   const targetCx = targetElement.group.x() + targetShape.width() / 2;
   const targetCy = targetElement.group.y() + targetShape.height() / 2;
 
-  const span = Math.hypot(targetCx - sourceCx, targetCy - sourceCy) || 1;
+  const span = Math.hypot(targetCx - sourceCx, targetCy - sourceCy);
+  if (span < 1) {
+    return null;
+  }
   const fx = (targetCx - sourceCx) / span;
   const fy = (targetCy - sourceCy) / span;
 
-  const fromBase = rectEdgePoint(sourceElement, targetCx, targetCy);
-  const toBase = rectEdgePoint(targetElement, sourceCx, sourceCy);
-  const tipPadding = Math.max(pointerLength * 0.55, 8);
+  const fromBase = rectEdgePoint(sourceElement, targetCx, targetCy, EDGE_GAP);
+  const toBase = rectEdgePoint(targetElement, sourceCx, sourceCy, EDGE_GAP);
+  if (!fromBase || !toBase) {
+    return null;
+  }
+  const tipPadding = Math.max(pointerLength + EDGE_GAP, 10);
+  const from = { x: fromBase.x + fx * EDGE_GAP, y: fromBase.y + fy * EDGE_GAP };
+  const to = { x: toBase.x - fx * tipPadding, y: toBase.y - fy * tipPadding };
 
-  return {
-    from: { x: fromBase.x + fx * 2, y: fromBase.y + fy * 2 },
-    to: { x: toBase.x - fx * tipPadding, y: toBase.y - fy * tipPadding }
-  };
+  if (Math.hypot(to.x - from.x, to.y - from.y) < 6) {
+    return null;
+  }
+
+  return { from, to };
 };
 
 const renderLinks = () => {
@@ -280,11 +307,18 @@ const renderLinks = () => {
 
   /** Directed edge: arrow at target (source_id → target_id). */
   const drawLinkArrow = (linkKind, linkId, sourceId, targetId, stroke, highlighted = false) => {
+    if (sourceId === targetId) {
+      return;
+    }
     const sourceElement = toRaw(elements.get(sourceId));
     const targetElement = toRaw(elements.get(targetId));
     if (sourceElement && targetElement && sourceElement.group && targetElement.group) {
       const pointerLength = highlighted ? 16 : 12;
-      const { from, to } = linkEndpoints(sourceElement, targetElement, pointerLength);
+      const endpoints = linkEndpoints(sourceElement, targetElement, pointerLength);
+      if (!endpoints) {
+        return;
+      }
+      const { from, to } = endpoints;
       const arrow = markRaw(new Konva.Arrow({
         points: [from.x, from.y, to.x, to.y],
         stroke: highlighted ? '#2563eb' : stroke,
@@ -597,6 +631,12 @@ onMounted(() => {
     canvasStore.openContextMenu(clientX, clientY, element, previousSelection);
   });
   elementService.value.setEditorAnchorRequest(publishEditorAnchor);
+  elementService.value.setLinksRenderRequest(() => {
+    renderLinks();
+    if (layer.value) {
+      layer.value.batchDraw();
+    }
+  });
   initCanvas();
   loadData();
   window.addEventListener('resize', handleResize);

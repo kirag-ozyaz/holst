@@ -39,7 +39,7 @@
           <select v-model="selectedNoteToAttach" class="form-input form-select">
             <option value="">— выберите заметку —</option>
             <option v-for="note in availableNotes" :key="note.id" :value="note.id">
-              {{ note.title || 'Без названия' }}
+              {{ formatCardListLine('note', note) }}
             </option>
           </select>
           <button
@@ -66,7 +66,7 @@
         >
           <option value="">— без задачи —</option>
           <option v-for="task in canvasStore.cards" :key="task.id" :value="task.id">
-            {{ task.title || 'Без названия' }}
+            {{ formatCardListLine('task', task) }}
           </option>
         </select>
       </div>
@@ -125,7 +125,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
-import { formatCardMetaLine } from '../utils/cardDisplay.js';
+import { formatCardListLine, formatCardMetaLine } from '../utils/cardDisplay.js';
 
 const canvasStore = useCanvasStore();
 

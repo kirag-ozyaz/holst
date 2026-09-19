@@ -41,6 +41,11 @@ export class CanvasElement {
       this.onDragStart();
     });
 
+    this.group.on('dragmove', () => {
+      this.canvasService.requestLinksRender();
+      this.canvasService.requestEditorAnchor(this.id);
+    });
+
     this.group.on('dragend', () => {
       this.onDragEnd();
     });
