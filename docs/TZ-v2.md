@@ -307,7 +307,7 @@
 | **Поиск** | PostgreSQL tsvector | MVP: ILIKE; **tsvector + UX — фаза 2** |
 | **Экспорт** | Markdown + PDF (WeasyPrint) | **Не выкинули — фаза 3** |
 | **Голос** | Vosk, `/api/voice/transcribe` | **Не выкинули — фаза 4** |
-| **Undo/redo** | event_log + API history | **Не выкinули — фаза 3** (`event_logs`) |
+| **Undo/redo** | event_log + API history | **Не выкинули — фаза 3** (`event_logs`) |
 | **Multi-canvas** | Несколько холстов | **Фаза 3** |
 | **Auth** | (подразумевалось для multi-user) | **Фаза 4** |
 | **ИИ / offline** | Ollama, сборка без интернета | **Фаза 4** |
