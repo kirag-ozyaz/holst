@@ -302,7 +302,10 @@ export const useCanvasStore = defineStore('canvas', {
           (link.link_target_type === 'note' || link.link_target_type === 'card') &&
           link.target_id
         ) {
-          ids.add(link.target_id)
+          const note = this.notes.find(n => n.id === link.target_id)
+          if (note && (!note.task_id || note.task_id === taskId)) {
+            ids.add(link.target_id)
+          }
         }
       })
       return this.notes.filter(n => ids.has(n.id))
@@ -330,13 +333,13 @@ export const useCanvasStore = defineStore('canvas', {
     },
 
     async detachNoteFromTask(taskId, noteId) {
-      const note = this.notes.find(n => n.id === noteId)
-      if (note && note.task_id === taskId) {
-        await this.updateNote(noteId, { task_id: null })
-      }
       const link = this.findTaskNoteLink(taskId, noteId)
       if (link) {
         await this.deleteTaskLink(link.id)
+      }
+      const note = this.notes.find(n => n.id === noteId)
+      if (note && note.task_id === taskId) {
+        await this.updateNote(noteId, { task_id: null })
       }
     },
 
