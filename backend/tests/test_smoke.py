@@ -36,6 +36,17 @@ def test_card_and_note_crud():
     assert r.json()["title"] == "C2"
 
 
+def test_task_journal_parent_child():
+    parent = client.post("/api/cards", json={"title": "Родитель"}).json()
+    child = client.post(
+        "/api/cards",
+        json={"title": "Подзадача", "parent_id": parent["id"]},
+    ).json()
+    assert child["parent_id"] == parent["id"]
+    reloaded = client.get(f"/api/cards/{child['id']}").json()
+    assert reloaded["parent_id"] == parent["id"]
+
+
 def test_note_task_attach_and_link():
     task = client.post("/api/cards", json={"title": "T1"}).json()
     note = client.post("/api/notes", json={"title": "N1"}).json()

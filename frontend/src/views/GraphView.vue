@@ -1,6 +1,7 @@
 <template>
   <div class="graph-view">
     <Toolbar />
+    <TaskJournal />
     <div ref="graphContainer" class="graph-container"></div>
   </div>
 </template>
@@ -10,6 +11,7 @@ import { ref, onMounted, watch, onUnmounted, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import cytoscape from 'cytoscape';
 import Toolbar from '../components/Toolbar.vue';
+import TaskJournal from '../components/TaskJournal.vue';
 import { useCanvasStore } from '../stores/canvas';
 
 const graphContainer = ref(null);

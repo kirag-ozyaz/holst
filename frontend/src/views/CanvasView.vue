@@ -1,6 +1,7 @@
 <template>
   <div class="canvas-view">
     <Toolbar />
+    <TaskJournal />
     <Canvas ref="canvas" />
     <EditorPanel v-if="canvasStore.selectedElement" :element="canvasStore.selectedElement" />
     <div v-if="canvasStore.linkMode" class="link-hint">
@@ -12,6 +13,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted } from 'vue';
 import Toolbar from '../components/Toolbar.vue';
+import TaskJournal from '../components/TaskJournal.vue';
 import Canvas from '../components/Canvas.vue';
 import EditorPanel from '../components/EditorPanel.vue';
 import { useCanvasStore } from '../stores/canvas';
