@@ -1,7 +1,10 @@
 <template>
   <aside class="task-journal" aria-label="Журнал задач">
     <div class="journal-header">
-      <h2 class="journal-title">Журнал задач</h2>
+      <div class="journal-title-block">
+        <h2 class="journal-title">Журнал задач</h2>
+        <span class="journal-count" aria-live="polite">{{ elementCountLabel }}</span>
+      </div>
       <div class="journal-header-actions">
         <div class="journal-view-toggle" role="group" aria-label="Режим отображения">
           <button
@@ -9,7 +12,7 @@
             class="journal-view-btn"
             :class="{ 'journal-view-btn-active': viewMode === 'tree' }"
             title="Дерево"
-            @click="setViewMode('tree')"
+            @click.stop="setViewMode('tree')"
           >
             Дерево
           </button>
@@ -18,7 +21,7 @@
             class="journal-view-btn"
             :class="{ 'journal-view-btn-active': viewMode === 'list' }"
             title="Список"
-            @click="setViewMode('list')"
+            @click.stop="setViewMode('list')"
           >
             Список
           </button>
@@ -227,6 +230,17 @@ const listRows = computed(() => {
 
 const visibleRows = computed(() => (viewMode.value === 'list' ? listRows.value : treeRows.value));
 
+const elementCountLabel = computed(() => {
+  const n = visibleRows.value.length;
+  const word =
+    n % 10 === 1 && n % 100 !== 11
+      ? 'элемент'
+      : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)
+        ? 'элемента'
+        : 'элементов';
+  return `${n} ${word}`;
+});
+
 function rowStyle(row) {
   if (viewMode.value === 'list') {
     return { paddingLeft: '12px' };
@@ -313,7 +327,8 @@ watch(
   border-radius: 8px;
   box-shadow: var(--holst-shadow-md);
   border: 1px solid var(--holst-border);
-  z-index: 999;
+  z-index: 1001;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -358,12 +373,25 @@ watch(
   font-weight: 600;
 }
 
+.journal-title-block {
+  min-width: 0;
+  flex: 1;
+}
+
 .journal-title {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--holst-text);
   min-width: 0;
+}
+
+.journal-count {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--holst-text-muted);
 }
 
 .journal-toggle {

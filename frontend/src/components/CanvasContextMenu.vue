@@ -5,6 +5,7 @@
     :style="{ left: `${menu.clientX}px`, top: `${menu.clientY}px` }"
     role="menu"
     @contextmenu.prevent
+    @mousedown.stop
     @click.stop
   >
     <button
@@ -14,7 +15,8 @@
       class="ctx-item"
       :class="{ 'ctx-item-danger': item.danger, 'ctx-item-disabled': item.disabled }"
       :disabled="item.disabled"
-      @click="run(item)"
+      @mousedown.stop
+      @click.stop="run(item)"
     >
       {{ item.label }}
     </button>
@@ -167,13 +169,21 @@ async function run(item) {
         break
     }
   } catch (err) {
-    alert(err.message || 'Не удалось выполнить действие')
+    const detail = err.response?.data?.detail
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : err.message || 'Не удалось выполнить действие'
+    alert(msg)
   } finally {
     canvasStore.closeContextMenu()
   }
 }
 
-function onDocClick() {
+function onDocPointerDown(event) {
+  if (event.target?.closest?.('.canvas-context-menu')) {
+    return
+  }
   canvasStore.closeContextMenu()
 }
 
@@ -183,18 +193,30 @@ function onKeyDown(e) {
   }
 }
 
+let outsideListenerTimer = null
+
 watch(menu, (value) => {
+  if (outsideListenerTimer) {
+    clearTimeout(outsideListenerTimer)
+    outsideListenerTimer = null
+  }
   if (value) {
-    window.addEventListener('click', onDocClick, { capture: true })
+    outsideListenerTimer = setTimeout(() => {
+      outsideListenerTimer = null
+      window.addEventListener('mousedown', onDocPointerDown, { capture: true })
+    }, 0)
     window.addEventListener('keydown', onKeyDown)
   } else {
-    window.removeEventListener('click', onDocClick, { capture: true })
+    window.removeEventListener('mousedown', onDocPointerDown, { capture: true })
     window.removeEventListener('keydown', onKeyDown)
   }
 })
 
 onUnmounted(() => {
-  window.removeEventListener('click', onDocClick, { capture: true })
+  if (outsideListenerTimer) {
+    clearTimeout(outsideListenerTimer)
+  }
+  window.removeEventListener('mousedown', onDocPointerDown, { capture: true })
   window.removeEventListener('keydown', onKeyDown)
 })
 </script>
