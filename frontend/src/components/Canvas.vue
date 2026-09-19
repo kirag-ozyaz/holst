@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, toRaw, markRaw, watch } from 'vue';
+import { onMounted, onUnmounted, ref, toRaw, markRaw, watch, nextTick } from 'vue';
 import Konva from 'konva';
 import { NoteCard } from '../classes/NoteCard.js';
 import { TaskCard } from '../classes/TaskCard.js';
@@ -237,13 +237,13 @@ const addNote = async (noteData) => {
 
 // Watch for store changes
 watch(() => canvasStore.cards.length, () => {
-  canvasStore.$nextTick(() => {
+  nextTick(() => {
     renderCanvas();
   });
 }, { deep: true });
 
 watch(() => canvasStore.notes.length, () => {
-  canvasStore.$nextTick(() => {
+  nextTick(() => {
     renderCanvas();
   });
 }, { deep: true });
@@ -271,6 +271,8 @@ watch(() => canvasStore.selectedElement, (newElement) => {
   
   previousSelectedElement = newElement;
 });
+
+defineExpose({ addCard, addNote });
 
 onMounted(() => {
   elementService.value = new CanvasElementService(canvasStore);

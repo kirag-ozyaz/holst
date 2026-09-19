@@ -49,6 +49,7 @@ app.add_middleware(
 )
 
 # Static files
+Path("static").mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/media", StaticFiles(directory="media"), name="media")
 
@@ -147,7 +148,7 @@ def create_note(note_data: dict, db: Session = Depends(get_db)):
         z_index=z_index,
         width=note_data.get("width", 300),
         height=note_data.get("height", 200),
-        card_id=note_data.get("card_id")
+        task_id=note_data.get("task_id") or note_data.get("card_id")
     )
     db.add(note)
     db.commit()
@@ -286,7 +287,7 @@ def upload_card_file(card_id: str, file: UploadFile = File(), db: Session = Depe
         filepath=str(file_path),
         file_size=file_path.stat().st_size,
         mime_type=file.content_type,
-        card_id=card_id
+        task_id=card_id
     )
     db.add(file_record)
     db.commit()
