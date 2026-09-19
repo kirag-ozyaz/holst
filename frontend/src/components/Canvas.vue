@@ -1,7 +1,6 @@
 <template>
   <div class="canvas-container">
     <div ref="stageContainer" class="stage-container"></div>
-    <CanvasContextMenu />
   </div>
 </template>
 
@@ -11,7 +10,6 @@ import Konva from 'konva';
 import { NoteCard } from '../classes/NoteCard.js';
 import { TaskCard } from '../classes/TaskCard.js';
 import { CanvasElementService } from '../services/CanvasElementService.js';
-import CanvasContextMenu from './CanvasContextMenu.vue';
 import { useCanvasStore } from '../stores/canvas';
 import { useThemeStore } from '../stores/theme';
 import { CARD_MIN_HEIGHT, CARD_MIN_WIDTH } from '../utils/cardDimensions.js';

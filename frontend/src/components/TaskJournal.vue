@@ -2,9 +2,31 @@
   <aside class="task-journal" aria-label="Журнал задач">
     <div class="journal-header">
       <h2 class="journal-title">Журнал задач</h2>
-      <button type="button" class="journal-toggle" @click="collapsed = !collapsed">
-        {{ collapsed ? '▸' : '▾' }}
-      </button>
+      <div class="journal-header-actions">
+        <div class="journal-view-toggle" role="group" aria-label="Режим отображения">
+          <button
+            type="button"
+            class="journal-view-btn"
+            :class="{ 'journal-view-btn-active': viewMode === 'tree' }"
+            title="Дерево"
+            @click="setViewMode('tree')"
+          >
+            Дерево
+          </button>
+          <button
+            type="button"
+            class="journal-view-btn"
+            :class="{ 'journal-view-btn-active': viewMode === 'list' }"
+            title="Список"
+            @click="setViewMode('list')"
+          >
+            Список
+          </button>
+        </div>
+        <button type="button" class="journal-toggle" @click="collapsed = !collapsed">
+          {{ collapsed ? '▸' : '▾' }}
+        </button>
+      </div>
     </div>
 
     <div v-show="!collapsed" class="journal-body">
@@ -16,13 +38,14 @@
           class="journal-row"
           :class="{
             'journal-row-selected': isSelected(row),
-            'journal-row-has-children': row.hasChildren,
+            'journal-row-has-children': row.hasChildren && viewMode === 'tree',
             'journal-row-note': row.kind === 'note'
           }"
-          :style="{ paddingLeft: `${12 + row.depth * 16}px` }"
+          :style="rowStyle(row)"
+          @contextmenu.prevent="onRowContextMenu($event, row)"
         >
           <button
-            v-if="row.hasChildren"
+            v-if="viewMode === 'tree' && row.hasChildren"
             type="button"
             class="journal-expand"
             :aria-expanded="row.expanded"
@@ -31,7 +54,11 @@
           >
             {{ row.expanded ? '➖' : '➕' }}
           </button>
-          <span v-else class="journal-expand journal-expand-placeholder" aria-hidden="true" />
+          <span
+            v-else-if="viewMode === 'tree'"
+            class="journal-expand journal-expand-placeholder"
+            aria-hidden="true"
+          />
 
           <button
             type="button"
@@ -55,6 +82,26 @@ import { computed, ref, watch } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
 import { formatCardMetaLine } from '../utils/cardDisplay.js';
 
+const JOURNAL_VIEW_KEY = 'holst.journal.viewMode';
+
+const canvasStore = useCanvasStore();
+const collapsed = ref(false);
+const expandedKeys = ref(new Set());
+const viewMode = ref(
+  typeof localStorage !== 'undefined' && localStorage.getItem(JOURNAL_VIEW_KEY) === 'list'
+    ? 'list'
+    : 'tree'
+);
+
+function setViewMode(mode) {
+  viewMode.value = mode;
+  try {
+    localStorage.setItem(JOURNAL_VIEW_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
 function rowMeta(row) {
   if (row.kind === 'note') {
     const note = canvasStore.notes.find(n => n.id === row.id);
@@ -63,10 +110,6 @@ function rowMeta(row) {
   const task = canvasStore.cards.find(c => c.id === row.id);
   return formatCardMetaLine('task', task || {});
 }
-
-const canvasStore = useCanvasStore();
-const collapsed = ref(false);
-const expandedKeys = ref(new Set());
 
 function sortByTitle(items, getTitle) {
   return [...items].sort((a, b) =>
@@ -145,13 +188,51 @@ function pushTaskRows(task, depth, out) {
   }
 }
 
-const visibleRows = computed(() => {
+const treeRows = computed(() => {
   const rows = [];
   for (const task of rootTasks.value) {
     pushTaskRows(task, 0, rows);
   }
   return rows;
 });
+
+const listRows = computed(() => {
+  const rows = [];
+  for (const task of sortByTitle(canvasStore.cards, (t) => t.title)) {
+    rows.push({
+      key: `task:${task.id}`,
+      kind: 'task',
+      id: task.id,
+      title: task.title,
+      depth: 0,
+      hasChildren: false,
+      expanded: false
+    });
+  }
+  for (const note of sortByTitle(canvasStore.notes, (n) => n.title)) {
+    rows.push({
+      key: `note:${note.id}`,
+      kind: 'note',
+      id: note.id,
+      title: note.title,
+      depth: 0,
+      hasChildren: false,
+      expanded: false
+    });
+  }
+  return rows.sort((a, b) =>
+    (a.title || '').localeCompare(b.title || '', 'ru', { sensitivity: 'base' })
+  );
+});
+
+const visibleRows = computed(() => (viewMode.value === 'list' ? listRows.value : treeRows.value));
+
+function rowStyle(row) {
+  if (viewMode.value === 'list') {
+    return { paddingLeft: '12px' };
+  }
+  return { paddingLeft: `${12 + row.depth * 16}px` };
+}
 
 function toggleExpand(key) {
   const next = new Set(expandedKeys.value);
@@ -163,18 +244,33 @@ function toggleExpand(key) {
   expandedKeys.value = next;
 }
 
-function onRowSelect(row) {
+function elementPayload(row) {
   if (row.kind === 'task') {
     const card = canvasStore.cards.find(c => c.id === row.id);
-    if (card) {
-      canvasStore.setSelectedElement({ ...card, type: 'task' });
-    }
-    return;
+    return card ? { ...card, type: 'task' } : null;
   }
   const note = canvasStore.notes.find(n => n.id === row.id);
-  if (note) {
-    canvasStore.setSelectedElement({ ...note, type: 'note' });
+  return note ? { ...note, type: 'note' } : null;
+}
+
+function onRowSelect(row) {
+  const el = elementPayload(row);
+  if (el) {
+    canvasStore.setSelectedElement(el);
   }
+}
+
+function onRowContextMenu(event, row) {
+  if (canvasStore.linkMode) {
+    return;
+  }
+  const el = elementPayload(row);
+  if (!el) {
+    return;
+  }
+  const previousSelection = canvasStore.selectedElement;
+  canvasStore.setSelectedElement(el);
+  canvasStore.openContextMenu(event.clientX, event.clientY, el, previousSelection);
 }
 
 function isSelected(row) {
@@ -227,8 +323,39 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--holst-border);
+}
+
+.journal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.journal-view-toggle {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--holst-border);
+}
+
+.journal-view-btn {
+  border: none;
+  background: var(--holst-bg-muted);
+  color: var(--holst-text-muted);
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.journal-view-btn-active {
+  background: var(--holst-accent-soft);
+  color: var(--holst-text);
+  font-weight: 600;
 }
 
 .journal-title {
@@ -236,6 +363,7 @@ watch(
   font-size: 15px;
   font-weight: 600;
   color: var(--holst-text);
+  min-width: 0;
 }
 
 .journal-toggle {

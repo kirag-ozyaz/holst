@@ -36,6 +36,7 @@ Note ──1:N──► NoteLink (source/target)    # связи заметка�
 | `task_type` | string | По умолчанию `"task"` |
 | `number` | int | Порядковый номер задачи (отображение **T-{number}**) |
 | `created_at`, `updated_at` | datetime | Метки времени (`created_at` — дата создания на карточке и в журнале) |
+| `deleted_at` | datetime? | Мягкое удаление: не null — скрыто с холста и из списков API |
 
 **Связи ORM:** `subtasks`, `files`, `notes`, `outgoing_links`, `incoming_links`.
 
