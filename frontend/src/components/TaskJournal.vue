@@ -8,7 +8,7 @@
     </div>
 
     <div v-show="!collapsed" class="journal-body">
-      <p v-if="!visibleRows.length" class="journal-empty">Нет задач и заметок</p>
+      <p v-if="!visibleRows.length" class="journal-empty">Нет задач</p>
       <ul v-else class="journal-list">
         <li
           v-for="row in visibleRows"
@@ -71,61 +71,33 @@ const childrenByParent = computed(() => {
     map.get(key).push(task);
   });
   map.forEach((list, key) => {
-    map.set(key, sortByTitle(list, t => t.title));
+    map.set(key, sortByTitle(list, (t) => t.title));
   });
   return map;
 });
 
-const noteLinkChildIds = computed(() => {
-  const ids = new Set();
-  canvasStore.noteLinks.forEach(link => {
-    if (link.target_id) {
-      ids.add(link.target_id);
-    }
-  });
-  return ids;
-});
-
+/** Root tasks only: no parent_id, or parent missing (orphan). */
 const rootTasks = computed(() => {
   const ids = new Set(canvasStore.cards.map(c => c.id));
   const roots = canvasStore.cards.filter(task => {
     if (!task.parent_id) return true;
     return !ids.has(task.parent_id);
   });
-  return sortByTitle(roots, t => t.title);
-});
-
-const rootNotes = computed(() => {
-  const roots = canvasStore.notes.filter(
-    note => !note.task_id && !noteLinkChildIds.value.has(note.id)
-  );
-  return sortByTitle(roots, n => n.title);
+  return sortByTitle(roots, (t) => t.title);
 });
 
 function childTasks(taskId) {
   return childrenByParent.value.get(taskId) || [];
 }
 
+/** Notes subordinate to a task via task_id (EditorPanel attach / create-and-attach). */
 function childNotesOfTask(taskId) {
-  return sortByTitle(canvasStore.notesAttachedToTask(taskId), (n) => n.title);
-}
-
-function childNotesOfNote(noteId) {
-  const childIds = canvasStore.noteLinks
-    .filter(link => link.source_id === noteId)
-    .map(link => link.target_id);
-  const notes = childIds
-    .map(id => canvasStore.notes.find(n => n.id === id))
-    .filter(Boolean);
-  return sortByTitle(notes, n => n.title);
+  const notes = canvasStore.notes.filter((n) => n.task_id === taskId);
+  return sortByTitle(notes, (n) => n.title);
 }
 
 function hasTaskChildren(taskId) {
   return childTasks(taskId).length > 0 || childNotesOfTask(taskId).length > 0;
-}
-
-function hasNoteChildren(noteId) {
-  return childNotesOfNote(noteId).length > 0;
 }
 
 function pushTaskRows(task, depth, out) {
@@ -148,28 +120,15 @@ function pushTaskRows(task, depth, out) {
     pushTaskRows(child, depth + 1, out);
   }
   for (const note of childNotesOfTask(task.id)) {
-    pushNoteRows(note, depth + 1, out);
-  }
-}
-
-function pushNoteRows(note, depth, out) {
-  const key = `note:${note.id}`;
-  const expanded = expandedKeys.value.has(key);
-  const hasChildren = hasNoteChildren(note.id);
-  out.push({
-    key,
-    kind: 'note',
-    id: note.id,
-    title: note.title,
-    depth,
-    hasChildren,
-    expanded
-  });
-  if (!hasChildren || !expanded) {
-    return;
-  }
-  for (const child of childNotesOfNote(note.id)) {
-    pushNoteRows(child, depth + 1, out);
+    out.push({
+      key: `note:${note.id}`,
+      kind: 'note',
+      id: note.id,
+      title: note.title,
+      depth: depth + 1,
+      hasChildren: false,
+      expanded: false
+    });
   }
 }
 
@@ -177,9 +136,6 @@ const visibleRows = computed(() => {
   const rows = [];
   for (const task of rootTasks.value) {
     pushTaskRows(task, 0, rows);
-  }
-  for (const note of rootNotes.value) {
-    pushNoteRows(note, 0, rows);
   }
   return rows;
 });
@@ -218,9 +174,8 @@ function isSelected(row) {
 watch(
   () =>
     [
-      canvasStore.cards.map(c => c.id).join(','),
-      canvasStore.notes.map(n => n.id).join(','),
-      canvasStore.noteLinks.map(l => l.id).join(',')
+      canvasStore.cards.map(c => `${c.id}:${c.parent_id}`).join(','),
+      canvasStore.notes.map(n => `${n.id}:${n.task_id || ''}`).join(',')
     ].join('|'),
   () => {
     const valid = new Set();
