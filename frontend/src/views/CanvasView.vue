@@ -1,6 +1,6 @@
 <template>
   <div class="canvas-view">
-    <Toolbar @add-card="handleAddCard" @add-note="handleAddNote" />
+    <Toolbar />
     <Canvas ref="canvas" />
     <EditorPanel v-if="canvasStore.selectedElement" :element="canvasStore.selectedElement" />
     <div v-if="canvasStore.linkMode" class="link-hint">
@@ -10,13 +10,12 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import Toolbar from '../components/Toolbar.vue';
 import Canvas from '../components/Canvas.vue';
 import EditorPanel from '../components/EditorPanel.vue';
 import { useCanvasStore } from '../stores/canvas';
 
-const canvas = ref(null);
 const canvasStore = useCanvasStore();
 
 const linkHintText = computed(() => {
@@ -25,18 +24,6 @@ const linkHintText = computed(() => {
   }
   return 'Режим связи: выберите первый элемент (Esc — выход)';
 });
-
-const handleAddCard = (cardData) => {
-  if (canvas.value) {
-    canvas.value.addCard(cardData);
-  }
-};
-
-const handleAddNote = (noteData) => {
-  if (canvas.value) {
-    canvas.value.addNote(noteData);
-  }
-};
 
 const onKeyDown = (e) => {
   if (e.key === 'Escape' && canvasStore.linkMode) {
@@ -51,8 +38,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown);
 });
-
-defineExpose({ handleAddCard, handleAddNote });
 </script>
 
 <style scoped>

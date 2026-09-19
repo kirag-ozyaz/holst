@@ -137,6 +137,15 @@ watch(
   }
 );
 
+watch(
+  () => [canvasStore.cards.length, canvasStore.notes.length, canvasStore.taskLinks.length, canvasStore.noteLinks.length],
+  () => {
+    if (route.path === '/graph' && cy.value) {
+      nextTick(() => renderGraph());
+    }
+  }
+);
+
 onUnmounted(() => {
   if (cy.value) {
     cy.value.destroy();
