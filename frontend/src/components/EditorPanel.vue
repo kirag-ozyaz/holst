@@ -324,12 +324,27 @@ const deleteElement = async () => {
   }
 };
 
-function elementTitle(id, link) {
-  const card = canvasStore.cards.find(c => c.id === id);
-  if (card) return card.title || 'Задача';
+function endpointEntityType(link, role) {
+  if (link.kind === 'note') {
+    return 'note';
+  }
+  if (role === 'source') {
+    return 'task';
+  }
+  if (link.link_target_type === 'note' || link.link_target_type === 'card') {
+    return 'note';
+  }
+  return 'task';
+}
+
+function formatLinkEndpoint(id, link, role) {
+  const entityType = endpointEntityType(link, role);
+  if (entityType === 'task') {
+    const card = canvasStore.cards.find(c => c.id === id);
+    return formatCardListLine('task', card || { title: 'Задача' });
+  }
   const note = canvasStore.notes.find(n => n.id === id);
-  if (note) return note.title || 'Заметка';
-  return id;
+  return formatCardListLine('note', note || { title: 'Заметка' });
 }
 
 function linkTypeHint(link) {
@@ -341,8 +356,8 @@ function linkTypeHint(link) {
 }
 
 function linkRowLabel(link) {
-  const from = elementTitle(link.source_id, link);
-  const to = elementTitle(link.target_id, link);
+  const from = formatLinkEndpoint(link.source_id, link, 'source');
+  const to = formatLinkEndpoint(link.target_id, link, 'target');
   return `${from} → ${to} (${linkTypeHint(link)})`;
 }
 
