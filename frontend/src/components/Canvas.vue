@@ -96,7 +96,11 @@ const updateExistingElements = () => {
     const element = toRaw(elements.get(card.id));
     if (element) {
       element.updatePosition(card.x, card.y);
-      element.updateLabel(card.title);
+      if (element.updateDisplay) {
+        element.updateDisplay(card);
+      } else {
+        element.updateLabel(card.title);
+      }
     }
   });
   
@@ -104,7 +108,11 @@ const updateExistingElements = () => {
     const element = toRaw(elements.get(note.id));
     if (element) {
       element.updatePosition(note.x, note.y);
-      element.updateLabel(note.title);
+      if (element.updateDisplay) {
+        element.updateDisplay(note);
+      } else {
+        element.updateLabel(note.title);
+      }
     }
   });
 };
@@ -349,6 +357,12 @@ watch(
   () => themeStore.theme,
   () => {
     nextTick(() => {
+      for (const element of elements.values()) {
+        const raw = toRaw(element);
+        if (raw?.refreshTheme) {
+          raw.refreshTheme();
+        }
+      }
       if (layer.value) {
         layer.value.draw();
       }

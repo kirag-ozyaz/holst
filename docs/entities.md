@@ -34,7 +34,8 @@ Note ──1:N──► NoteLink (source/target)    # связи заметка�
 | `width`, `height` | int | Размер на холсте |
 | `parent_id` | string?, FK → tasks.id | Родительская задача (журнал, дерево) |
 | `task_type` | string | По умолчанию `"task"` |
-| `created_at`, `updated_at` | datetime | Метки времени |
+| `number` | int | Порядковый номер задачи (отображение **T-{number}**) |
+| `created_at`, `updated_at` | datetime | Метки времени (`created_at` — дата создания на карточке и в журнале) |
 
 **Связи ORM:** `subtasks`, `files`, `notes`, `outgoing_links`, `incoming_links`.
 
@@ -48,6 +49,7 @@ Note ──1:N──► NoteLink (source/target)    # связи заметка�
 | (поля BaseCard) | | x, y, title, content, … |
 | `task_id` | string?, FK → tasks.id | **Привязка** к задаче (владение) |
 | `note_type` | string | По умолчанию `"note"` |
+| `number` | int | Порядковый номер заметки (**N-{number}**) |
 
 При «привязать заметку» в UI выставляются **`task_id`** и запись в **`task_links`** (задача → заметка) для линии на холсте.
 

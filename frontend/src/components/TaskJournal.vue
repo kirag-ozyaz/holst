@@ -39,7 +39,10 @@
             @click="onRowSelect(row)"
           >
             <span v-if="row.kind === 'note'" class="journal-kind" aria-hidden="true">📝</span>
-            {{ row.title || 'Без названия' }}
+            <span class="journal-label-text">
+              <span class="journal-meta">{{ rowMeta(row) }}</span>
+              <span class="journal-task-title">{{ row.title || 'Без названия' }}</span>
+            </span>
           </button>
         </li>
       </ul>
@@ -50,6 +53,16 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
+import { formatCardMetaLine } from '../utils/cardDisplay.js';
+
+function rowMeta(row) {
+  if (row.kind === 'note') {
+    const note = canvasStore.notes.find(n => n.id === row.id);
+    return formatCardMetaLine('note', note || {});
+  }
+  const task = canvasStore.cards.find(c => c.id === row.id);
+  return formatCardMetaLine('task', task || {});
+}
 
 const canvasStore = useCanvasStore();
 const collapsed = ref(false);
@@ -299,7 +312,7 @@ watch(
 .journal-label {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   text-align: left;
   border: none;
@@ -311,8 +324,31 @@ watch(
   border-radius: 4px;
   min-width: 0;
   overflow: hidden;
+}
+
+.journal-label-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.journal-meta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--holst-text-muted);
+  line-height: 1.2;
+}
+
+.journal-task-title {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.3;
 }
 
 .journal-kind {

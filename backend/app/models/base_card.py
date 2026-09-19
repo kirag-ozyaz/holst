@@ -22,5 +22,6 @@ class BaseCard(Base):
     z_index = Column(Integer, default=0)  # Z-index for layering
     width = Column(Integer, default=300)
     height = Column(Integer, default=200)
+    number = Column(Integer, nullable=True, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

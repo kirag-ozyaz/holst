@@ -32,6 +32,14 @@ def test_card_and_note_crud():
     note = client.post("/api/notes", json={"title": "N1"}).json()
     assert card["title"] == "C1"
     assert note["title"] == "N1"
+    assert isinstance(card.get("number"), int) and card["number"] >= 1
+    assert isinstance(note.get("number"), int) and note["number"] >= 1
+    assert card.get("created_at")
+    assert note.get("created_at")
+    card2 = client.post("/api/cards", json={"title": "C2"}).json()
+    assert card2["number"] > card["number"]
+    updated = client.put(f"/api/cards/{card['id']}", json={"title": "C1b", "number": 99999}).json()
+    assert updated["number"] == card["number"]
     r = client.put(f"/api/cards/{card['id']}", json={"title": "C2"})
     assert r.json()["title"] == "C2"
 
