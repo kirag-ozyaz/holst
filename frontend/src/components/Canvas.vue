@@ -1,6 +1,7 @@
 <template>
   <div class="canvas-container">
     <div ref="stageContainer" class="stage-container"></div>
+    <CanvasContextMenu />
   </div>
 </template>
 
@@ -10,8 +11,10 @@ import Konva from 'konva';
 import { NoteCard } from '../classes/NoteCard.js';
 import { TaskCard } from '../classes/TaskCard.js';
 import { CanvasElementService } from '../services/CanvasElementService.js';
+import CanvasContextMenu from './CanvasContextMenu.vue';
 import { useCanvasStore } from '../stores/canvas';
 import { useThemeStore } from '../stores/theme';
+import { CARD_MIN_HEIGHT, CARD_MIN_WIDTH } from '../utils/cardDimensions.js';
 
 const stageContainer = ref(null);
 const stage = ref(null);
@@ -19,6 +22,7 @@ const layer = ref(null);
 const elementService = ref(null);
 const elements = new Map();
 const linkElements = [];
+const transformer = ref(null);
 
 const canvasStore = useCanvasStore();
 const themeStore = useThemeStore();
@@ -33,6 +37,30 @@ const initCanvas = () => {
 
   const layerObj = markRaw(new Konva.Layer());
   stageObj.add(layerObj);
+
+  const tr = markRaw(new Konva.Transformer({
+    rotateEnabled: false,
+    keepRatio: false,
+    enabledAnchors: [
+      'top-left',
+      'top-right',
+      'bottom-left',
+      'bottom-right',
+      'middle-left',
+      'middle-right',
+      'top-center',
+      'bottom-center'
+    ],
+    boundBoxFunc: (oldBox, newBox) => {
+      if (newBox.width < CARD_MIN_WIDTH || newBox.height < CARD_MIN_HEIGHT) {
+        return oldBox;
+      }
+      return newBox;
+    }
+  }));
+  tr.on('transformend', onTransformEnd);
+  layerObj.add(tr);
+  transformer.value = tr;
   
   stage.value = stageObj;
   layer.value = layerObj;
@@ -96,7 +124,9 @@ const updateExistingElements = () => {
     const element = toRaw(elements.get(card.id));
     if (element) {
       element.updatePosition(card.x, card.y);
-      if (element.updateDisplay) {
+      const sizeChanged =
+        card.width !== element.data.width || card.height !== element.data.height;
+      if (element.updateDisplay && (sizeChanged || card.title !== element.data.title)) {
         element.updateDisplay(card);
       } else {
         element.updateLabel(card.title);
@@ -108,13 +138,16 @@ const updateExistingElements = () => {
     const element = toRaw(elements.get(note.id));
     if (element) {
       element.updatePosition(note.x, note.y);
-      if (element.updateDisplay) {
+      const sizeChanged =
+        note.width !== element.data.width || note.height !== element.data.height;
+      if (element.updateDisplay && (sizeChanged || note.title !== element.data.title)) {
         element.updateDisplay(note);
       } else {
         element.updateLabel(note.title);
       }
     }
   });
+  syncTransformerNodes();
 };
 
 const addNewElements = () => {
@@ -279,6 +312,78 @@ const updateNotePosition = async (noteId, x, y, zIndex) => {
   await canvasStore.updateNote(noteId, updateData);
 };
 
+const updateCardDimensions = async (cardId, width, height, zIndex) => {
+  const updateData = { width, height };
+  if (zIndex !== undefined) {
+    updateData.z_index = zIndex;
+  }
+  await canvasStore.updateCard(cardId, updateData);
+  nextTick(() => renderLinks());
+};
+
+const updateNoteDimensions = async (noteId, width, height, zIndex) => {
+  const updateData = { width, height };
+  if (zIndex !== undefined) {
+    updateData.z_index = zIndex;
+  }
+  await canvasStore.updateNote(noteId, updateData);
+  nextTick(() => renderLinks());
+};
+
+const syncTransformerNodes = () => {
+  const tr = transformer.value;
+  if (!tr) {
+    return;
+  }
+  const selected = canvasStore.selectedElement;
+  if (!selected || canvasStore.linkMode) {
+    tr.nodes([]);
+    tr.getLayer()?.batchDraw();
+    return;
+  }
+  const element = toRaw(elements.get(selected.id));
+  if (element?.group) {
+    tr.nodes([element.group]);
+    tr.moveToTop();
+  } else {
+    tr.nodes([]);
+  }
+  tr.getLayer()?.batchDraw();
+};
+
+const onTransformEnd = () => {
+  const tr = transformer.value;
+  if (!tr) {
+    return;
+  }
+  const node = tr.nodes()[0];
+  if (!node) {
+    return;
+  }
+  const element = toRaw(elements.get(node.id()));
+  if (!element?.finalizeResizeFromTransform) {
+    return;
+  }
+  const size = element.finalizeResizeFromTransform();
+  if (!size) {
+    return;
+  }
+  const zIndex = element.data.z_index;
+  const handlers = elementService.value?.positionHandlers;
+  if (element.getType() === 'task') {
+    if (handlers?.updateCardDimensions) {
+      handlers.updateCardDimensions(element.id, size.width, size.height, zIndex);
+    } else {
+      canvasStore.updateCard(element.id, { width: size.width, height: size.height, z_index: zIndex });
+    }
+  } else if (handlers?.updateNoteDimensions) {
+    handlers.updateNoteDimensions(element.id, size.width, size.height, zIndex);
+  } else {
+    canvasStore.updateNote(element.id, { width: size.width, height: size.height, z_index: zIndex });
+  }
+  nextTick(() => renderLinks());
+};
+
 const createElement = (data, type) => {
   try {
     let element;
@@ -403,6 +508,8 @@ watch(() => canvasStore.selectedElement, (newElement) => {
     renderLinks();
   }
 
+  syncTransformerNodes();
+
   if (layer.value) {
     layer.value.draw();
   }
@@ -410,11 +517,26 @@ watch(() => canvasStore.selectedElement, (newElement) => {
   previousSelectedElement = newElement;
 });
 
+watch(
+  () => canvasStore.linkMode,
+  () => {
+    syncTransformerNodes();
+  }
+);
+
 defineExpose({ addCard, addNote });
 
 onMounted(() => {
   elementService.value = new CanvasElementService(canvasStore);
-  elementService.value.setPositionHandlers({ updateCardPosition, updateNotePosition });
+  elementService.value.setPositionHandlers({
+    updateCardPosition,
+    updateNotePosition,
+    updateCardDimensions,
+    updateNoteDimensions
+  });
+  elementService.value.setContextMenuHandler((clientX, clientY, element, previousSelection) => {
+    canvasStore.openContextMenu(clientX, clientY, element, previousSelection);
+  });
   initCanvas();
   loadData();
   window.addEventListener('resize', handleResize);

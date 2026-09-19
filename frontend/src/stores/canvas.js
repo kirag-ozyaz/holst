@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { defineStore } from 'pinia'
+import { wouldCreateTaskParentCycle } from '../utils/taskHierarchy.js'
 
 export const useCanvasStore = defineStore('canvas', {
   state: () => ({
@@ -14,7 +15,8 @@ export const useCanvasStore = defineStore('canvas', {
     pendingLinkSource: null,
     scale: 1,
     x: 0,
-    y: 0
+    y: 0,
+    contextMenu: null
   }),
 
   actions: {
@@ -447,6 +449,50 @@ export const useCanvasStore = defineStore('canvas', {
       this.scale = scale
       this.x = x
       this.y = y
+    },
+
+    openContextMenu(clientX, clientY, element, previousSelection = null) {
+      this.contextMenu = { clientX, clientY, element, previousSelection }
+    },
+
+    closeContextMenu() {
+      this.contextMenu = null
+    },
+
+    async setTaskParent(taskId, parentId) {
+      const parent = parentId || null
+      if (wouldCreateTaskParentCycle(taskId, parent, this.cards)) {
+        throw new Error('Нельзя создать циклическую иерархию задач')
+      }
+      await this.updateCard(taskId, { parent_id: parent })
+    },
+
+    async bringElementToFront(element) {
+      const maxZ = this.getMaxZIndex() + 1
+      if (element.type === 'task') {
+        await this.updateCard(element.id, { z_index: maxZ })
+      } else {
+        await this.updateNote(element.id, { z_index: maxZ })
+      }
+    },
+
+    async deleteElement(element) {
+      if (element.type === 'task') {
+        await this.deleteCard(element.id)
+      } else {
+        await this.deleteNote(element.id)
+      }
+    },
+
+    async linkElementToSelected(target) {
+      const selected = this.selectedElement
+      if (!selected || selected.id === target.id) {
+        throw new Error('Выберите другой элемент (ЛКМ), затем выполните команду')
+      }
+      await this.createLinkBetween(
+        { id: selected.id, type: selected.type },
+        { id: target.id, type: target.type }
+      )
     }
   }
 })
