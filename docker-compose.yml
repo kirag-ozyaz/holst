@@ -29,6 +29,8 @@ services:
       - media_volume:/app/media
     environment:
       - DATABASE_URL=postgresql://holst:holst@db:5432/holst
+      - APP_VERSION=0.1.0-phase-0-1
+      - APP_PHASE=0-1
     depends_on:
       db:
         condition: service_healthy

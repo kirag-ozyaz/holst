@@ -37,7 +37,10 @@ def create_tables_if_needed():
 
 create_tables_if_needed()
 
-app = FastAPI(title="Холст API", version="1.0.0")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.0-phase-0-1")
+APP_PHASE = os.getenv("APP_PHASE", "0-1")
+
+app = FastAPI(title="Холст API", version=APP_VERSION)
 
 # CORS
 app.add_middleware(
@@ -61,7 +64,12 @@ MEDIA_DIR.mkdir(exist_ok=True)
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "message": "Холст API работает"}
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "phase": APP_PHASE,
+        "message": "Холст API работает",
+    }
 
 # Helper function to get next z_index
 def get_next_z_index(db: Session):
