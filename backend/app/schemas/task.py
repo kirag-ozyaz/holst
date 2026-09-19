@@ -16,6 +16,7 @@ class BaseCardSchema(BaseModel):
     z_index: int = 0
     width: int = 300
     height: int = 200
+    number: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

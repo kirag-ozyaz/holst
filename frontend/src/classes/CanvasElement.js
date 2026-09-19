@@ -176,8 +176,18 @@ export class CanvasElement {
    * Обновляет позицию элемента (только если не перетаскивается)
    */
   updateLabel(title) {
+    if (typeof this.updateDisplay === 'function') {
+      this.updateDisplay({ title });
+      return;
+    }
     if (this.group && this.group.children[1]) {
       this.group.children[1].text(title || 'Untitled');
+    }
+  }
+
+  refreshTheme() {
+    if (typeof this.applyTheme === 'function') {
+      this.applyTheme();
     }
   }
 

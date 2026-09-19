@@ -10,8 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from .database import engine, get_db
+from .card_numbers import (
+    backfill_numbers_and_dates,
+    ensure_number_columns,
+    next_note_number,
+    next_task_number,
+)
+from .database import SessionLocal, engine, get_db
 from .models import Task, Note, EventLog, File, NoteLink, TaskLink
+
+IMMUTABLE_CARD_FIELDS = frozenset({"id", "number", "created_at"})
 
 # Create tables only if DB is available
 import time
@@ -36,7 +44,22 @@ def create_tables_if_needed():
             else:
                 print("Warning: Could not connect to database. Tables will be created on first connection.")
 
+
+def sync_card_number_schema():
+    """Ensure number column exists and backfill legacy rows."""
+    try:
+        ensure_number_columns()
+        db = SessionLocal()
+        try:
+            backfill_numbers_and_dates(db)
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Warning: card number schema sync skipped: {e}")
+
+
 create_tables_if_needed()
+sync_card_number_schema()
 
 APP_VERSION = os.getenv("APP_VERSION", "0.1.0-phase-0-1")
 APP_PHASE = os.getenv("APP_PHASE", "0-1")
@@ -110,6 +133,7 @@ def create_card(card_data: dict, db: Session = Depends(get_db)):
     
     card = Task(
         id=card_id,
+        number=next_task_number(db),
         title=card_data.get("title", "Новая задача"),
         content=card_data.get("content", []),
         x=card_data.get("x", 100),
@@ -142,6 +166,8 @@ def update_card(card_id: str, card_data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
     for key, value in card_data.items():
+        if key in IMMUTABLE_CARD_FIELDS:
+            continue
         if hasattr(card, key):
             setattr(card, key, value)
 
@@ -167,6 +193,7 @@ def create_note(note_data: dict, db: Session = Depends(get_db)):
     
     note = Note(
         id=note_id,
+        number=next_note_number(db),
         title=note_data.get("title", "Новая заметка"),
         content=note_data.get("content", []),
         x=note_data.get("x", 100),
@@ -199,6 +226,8 @@ def update_note(note_id: str, note_data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Заметка не найдена")
 
     for key, value in note_data.items():
+        if key in IMMUTABLE_CARD_FIELDS:
+            continue
         if hasattr(note, key):
             setattr(note, key, value)
 

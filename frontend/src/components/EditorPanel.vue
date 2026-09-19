@@ -10,6 +10,7 @@
     </div>
 
     <div v-if="element" class="editor-content">
+      <p v-if="elementMeta" class="editor-meta">{{ elementMeta }}</p>
       <div class="form-group">
         <label for="title">Заголовок</label>
         <input
@@ -124,6 +125,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
+import { formatCardMetaLine } from '../utils/cardDisplay.js';
 
 const canvasStore = useCanvasStore();
 
@@ -150,6 +152,11 @@ const availableNotes = computed(() => {
 const allRelatedLinks = computed(() => {
   if (!props.element) return [];
   return canvasStore.linksForElement(props.element.id);
+});
+
+const elementMeta = computed(() => {
+  if (!props.element?.type) return '';
+  return formatCardMetaLine(props.element.type, props.element);
 });
 
 watch(() => props.element, (newElement) => {
@@ -392,6 +399,13 @@ const closeEditor = () => {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+}
+
+.editor-meta {
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--holst-text-muted);
 }
 
 .form-group {

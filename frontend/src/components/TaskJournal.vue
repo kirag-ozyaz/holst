@@ -37,7 +37,8 @@
             class="journal-label"
             @click="onRowActivate(row)"
           >
-            {{ row.task.title || 'Без названия' }}
+            <span class="journal-meta">{{ taskMeta(row.task) }}</span>
+            <span class="journal-task-title">{{ row.task.title || 'Без названия' }}</span>
           </button>
         </li>
       </ul>
@@ -48,6 +49,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
+import { formatCardMetaLine } from '../utils/cardDisplay.js';
+
+function taskMeta(task) {
+  return formatCardMetaLine('task', task);
+}
 
 const canvasStore = useCanvasStore();
 const collapsed = ref(false);
@@ -254,6 +260,10 @@ watch(
 
 .journal-label {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   text-align: left;
   border: none;
   background: transparent;
@@ -264,8 +274,22 @@ watch(
   border-radius: 4px;
   min-width: 0;
   overflow: hidden;
+}
+
+.journal-meta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--holst-text-muted);
+  line-height: 1.2;
+}
+
+.journal-task-title {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.3;
 }
 
 .journal-label:hover {
