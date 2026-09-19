@@ -37,6 +37,12 @@ const publishEditorAnchor = (elementId) => {
   if (!elementId || !stage.value || !stageContainer.value) {
     return;
   }
+  if (!canvasStore.editorElement || canvasStore.editorElement.id !== elementId) {
+    return;
+  }
+  if (canvasStore.editorPanelPosition) {
+    return;
+  }
   const element = toRaw(elements.get(elementId));
   if (!element?.group) {
     return;
@@ -103,10 +109,10 @@ const initCanvas = () => {
     }
   }));
   tr.on('transform', () => {
-    renderLinks();
+    maintainLayerOrder();
     layerObj.batchDraw();
-    if (canvasStore.selectedElement?.id) {
-      publishEditorAnchor(canvasStore.selectedElement.id);
+    if (canvasStore.editorElement?.id && !canvasStore.editorPanelPosition) {
+      publishEditorAnchor(canvasStore.editorElement.id);
     }
   });
   tr.on('transformend', onTransformEnd);
@@ -145,15 +151,15 @@ const initCanvas = () => {
     stage.value.position(newPos);
     stage.value.batchDraw();
     syncStageTransformToStore();
-    if (canvasStore.selectedElement?.id) {
-      publishEditorAnchor(canvasStore.selectedElement.id);
+    if (canvasStore.editorElement?.id && !canvasStore.editorPanelPosition) {
+      publishEditorAnchor(canvasStore.editorElement.id);
     }
   });
 
   stage.value.on('dragmove dragend', () => {
     syncStageTransformToStore();
-    if (canvasStore.selectedElement?.id) {
-      publishEditorAnchor(canvasStore.selectedElement.id);
+    if (canvasStore.editorElement?.id && !canvasStore.editorPanelPosition) {
+      publishEditorAnchor(canvasStore.editorElement.id);
     }
   });
 };
@@ -163,8 +169,8 @@ const handleResize = () => {
     stage.value.width(window.innerWidth);
     stage.value.height(window.innerHeight);
   }
-  if (canvasStore.selectedElement?.id) {
-    publishEditorAnchor(canvasStore.selectedElement.id);
+  if (canvasStore.editorElement?.id && !canvasStore.editorPanelPosition) {
+    publishEditorAnchor(canvasStore.editorElement.id);
   }
 };
 
@@ -177,8 +183,7 @@ const renderCanvas = () => {
   updateExistingElements();
   addNewElements();
   removeDeletedElements();
-  maintainElementsOrder();
-  renderLinks();
+  maintainLayerOrder();
   if (layer.value) {
     layer.value.draw();
   }
@@ -301,7 +306,19 @@ const linkEndpoints = (sourceElement, targetElement, pointerLength) => {
   return { from, to };
 };
 
-const renderLinks = () => {
+const linkZForEntry = (entry) => {
+  const sourceCard = canvasStore.cards.find(c => c.id === entry.source_id);
+  if (sourceCard) {
+    return sourceCard.z_index || 0;
+  }
+  const sourceNote = canvasStore.notes.find(n => n.id === entry.source_id);
+  return sourceNote?.z_index || 0;
+};
+
+const maintainLayerOrder = () => {
+  if (!layer.value || !elementService.value) {
+    return;
+  }
   linkElements.forEach(link => link.destroy());
   linkElements.length = 0;
 
@@ -336,9 +353,7 @@ const renderLinks = () => {
         shadowOpacity: highlighted ? 0.45 : 0
       }));
       layer.value.add(arrow);
-      if (highlighted) {
-        arrow.moveToTop();
-      }
+      arrow.moveToTop();
       linkElements.push(arrow);
     }
   };
@@ -360,17 +375,56 @@ const renderLinks = () => {
   const allLinks = [...taskLinkEntries, ...noteLinkEntries];
   const highlightKey = canvasStore.highlightedLinkKey;
 
-  allLinks
-    .filter(entry => highlightKey !== canvasStore.linkKey(entry.kind, entry.id))
-    .forEach(entry => {
-      drawLinkArrow(entry.kind, entry.id, entry.source_id, entry.target_id, entry.stroke, false);
+  const queue = [];
+  elementService.value.getSortedElements().forEach(data => {
+    queue.push({ kind: 'element', z: data.z_index || 0, id: data.id });
+  });
+  allLinks.forEach(entry => {
+    queue.push({
+      kind: 'link',
+      z: linkZForEntry(entry),
+      entry,
+      highlighted: highlightKey === canvasStore.linkKey(entry.kind, entry.id)
     });
+  });
 
-  allLinks
-    .filter(entry => highlightKey === canvasStore.linkKey(entry.kind, entry.id))
-    .forEach(entry => {
-      drawLinkArrow(entry.kind, entry.id, entry.source_id, entry.target_id, entry.stroke, true);
-    });
+  queue.sort((a, b) => {
+    if (a.z !== b.z) {
+      return a.z - b.z;
+    }
+    if (a.kind === b.kind) {
+      return 0;
+    }
+    return a.kind === 'element' ? -1 : 1;
+  });
+
+  queue.forEach(item => {
+    if (item.kind === 'element') {
+      const element = toRaw(elements.get(item.id));
+      if (element?.group) {
+        element.group.moveToTop();
+      }
+      return;
+    }
+    const entry = item.entry;
+    drawLinkArrow(
+      entry.kind,
+      entry.id,
+      entry.source_id,
+      entry.target_id,
+      entry.stroke,
+      item.highlighted
+    );
+  });
+
+  const tr = transformer.value;
+  if (tr) {
+    tr.moveToTop();
+  }
+};
+
+const renderLinks = () => {
+  maintainLayerOrder();
 };
 
 const applyLinkPeerHighlights = () => {
@@ -394,6 +448,9 @@ const updateCardPosition = async (cardId, x, y, zIndex) => {
     updateData.z_index = zIndex;
   }
   await canvasStore.updateCard(cardId, updateData);
+  if (zIndex !== undefined) {
+    await canvasStore.syncZIndexForHierarchy(cardId, zIndex);
+  }
 };
 
 const updateNotePosition = async (noteId, x, y, zIndex) => {
@@ -499,14 +556,7 @@ const createElement = (data, type) => {
 };
 
 const maintainElementsOrder = () => {
-  const sortedElements = elementService.value.getSortedElements();
-  
-  sortedElements.forEach(data => {
-    const element = toRaw(elements.get(data.id));
-    if (element && element.group) {
-      element.group.moveToTop();
-    }
-  });
+  maintainLayerOrder();
 };
 
 const addCard = async (cardData) => {
@@ -595,10 +645,9 @@ watch(() => canvasStore.selectedElement, (newElement) => {
     if (element) {
       element.setSelected();
     }
-    nextTick(() => publishEditorAnchor(newElement.id));
   } else {
     applyLinkPeerHighlights();
-    renderLinks();
+    maintainLayerOrder();
   }
 
   syncTransformerNodes();
@@ -614,6 +663,15 @@ watch(
   () => canvasStore.linkMode,
   () => {
     syncTransformerNodes();
+  }
+);
+
+watch(
+  () => canvasStore.editorElement,
+  (newElement) => {
+    if (newElement?.id) {
+      nextTick(() => publishEditorAnchor(newElement.id));
+    }
   }
 );
 

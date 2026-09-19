@@ -17,6 +17,8 @@ export const useCanvasStore = defineStore('canvas', {
     x: 0,
     y: 0,
     editorAnchor: null,
+    editorElement: null,
+    editorPanelPosition: null,
     contextMenu: null
   }),
 
@@ -40,6 +42,12 @@ export const useCanvasStore = defineStore('canvas', {
 
     async createCard(cardData) {
       try {
+        if (cardData.parent_id && cardData.z_index === undefined) {
+          const parentZ = this.taskZIndex(cardData.parent_id)
+          if (parentZ != null) {
+            cardData.z_index = parentZ
+          }
+        }
         if (cardData.z_index === undefined) {
           const maxZResponse = await axios.get('/api/max-z-index')
           cardData.z_index = maxZResponse.data.max_z_index + 1
@@ -62,6 +70,9 @@ export const useCanvasStore = defineStore('canvas', {
         }
         if (this.selectedElement?.id === cardId) {
           this.selectedElement = { ...this.selectedElement, ...response.data, type: 'task' }
+        }
+        if (this.editorElement?.id === cardId) {
+          this.editorElement = { ...this.editorElement, ...response.data, type: 'task' }
         }
         return response.data
       } catch (error) {
@@ -117,13 +128,19 @@ export const useCanvasStore = defineStore('canvas', {
           (sel.type === 'note' && removedNoteIds.has(sel.id)))
       ) {
         this.selectedElement = null
-        this.editorAnchor = null
+        this.closeEditor()
       }
       this.closeContextMenu()
     },
 
     async createNote(noteData) {
       try {
+        if (noteData.task_id && noteData.z_index === undefined) {
+          const parentZ = this.taskZIndex(noteData.task_id)
+          if (parentZ != null) {
+            noteData.z_index = parentZ
+          }
+        }
         if (noteData.z_index === undefined) {
           const maxZResponse = await axios.get('/api/max-z-index')
           noteData.z_index = maxZResponse.data.max_z_index + 1
@@ -146,6 +163,9 @@ export const useCanvasStore = defineStore('canvas', {
         }
         if (this.selectedElement?.id === noteId) {
           this.selectedElement = { ...this.selectedElement, ...response.data, type: 'note' }
+        }
+        if (this.editorElement?.id === noteId) {
+          this.editorElement = { ...this.editorElement, ...response.data, type: 'note' }
         }
         return response.data
       } catch (error) {
@@ -190,7 +210,9 @@ export const useCanvasStore = defineStore('canvas', {
       }
       if (this.selectedElement && removedNoteIds.has(this.selectedElement.id)) {
         this.selectedElement = null
-        this.editorAnchor = null
+      }
+      if (this.editorElement && removedNoteIds.has(this.editorElement.id)) {
+        this.closeEditor()
       }
       this.closeContextMenu()
     },
@@ -245,6 +267,56 @@ export const useCanvasStore = defineStore('canvas', {
 
     setEditorAnchor(anchor) {
       this.editorAnchor = anchor
+    },
+
+    setEditorPanelPosition(position) {
+      this.editorPanelPosition = position
+    },
+
+    taskZIndex(taskId) {
+      const task = this.cards.find(c => c.id === taskId)
+      return task?.z_index ?? null
+    },
+
+    childTasksOf(taskId) {
+      return this.cards.filter(c => c.parent_id === taskId)
+    },
+
+    async syncChildZIndices(parentTaskId, zIndex) {
+      const childTasks = this.childTasksOf(parentTaskId)
+      const attachedNotes = this.notesAttachedToTask(parentTaskId)
+      const updates = []
+      for (const child of childTasks) {
+        if (child.z_index !== zIndex) {
+          updates.push(this.updateCard(child.id, { z_index: zIndex }))
+        }
+        updates.push(this.syncChildZIndices(child.id, zIndex))
+      }
+      for (const note of attachedNotes) {
+        if (note.z_index !== zIndex) {
+          updates.push(this.updateNote(note.id, { z_index: zIndex }))
+        }
+      }
+      await Promise.all(updates)
+    },
+
+    async syncZIndexForHierarchy(taskId, zIndex) {
+      await this.syncChildZIndices(taskId, zIndex)
+    },
+
+    openEditor(element) {
+      if (!element) {
+        this.closeEditor()
+        return
+      }
+      this.editorElement = { ...element }
+      this.editorPanelPosition = null
+    },
+
+    closeEditor() {
+      this.editorElement = null
+      this.editorAnchor = null
+      this.editorPanelPosition = null
     },
 
     async createTaskLink(linkData) {
@@ -339,9 +411,13 @@ export const useCanvasStore = defineStore('canvas', {
       this.selectedElement = element
       this.clearHighlightedLink()
       if (!element) {
-        this.editorAnchor = null
+        this.closeEditor()
       }
       this.closeContextMenu()
+    },
+
+    clearSelection() {
+      this.setSelectedElement(null)
     },
 
     toggleLinkMode() {
@@ -445,7 +521,12 @@ export const useCanvasStore = defineStore('canvas', {
           await this.deleteTaskLink(oldLink.id)
         }
       }
-      await this.updateNote(noteId, { task_id: taskId })
+      const taskZ = this.taskZIndex(taskId)
+      const noteUpdate = { task_id: taskId }
+      if (taskZ != null) {
+        noteUpdate.z_index = taskZ
+      }
+      await this.updateNote(noteId, noteUpdate)
       await this.ensureTaskNoteLink(taskId, noteId)
     },
 
@@ -464,10 +545,12 @@ export const useCanvasStore = defineStore('canvas', {
       const pos = overrides.x != null && overrides.y != null
         ? { x: overrides.x, y: overrides.y }
         : { x: Math.round(120 + Math.random() * 400), y: Math.round(120 + Math.random() * 400) }
+      const taskZ = this.taskZIndex(taskId)
       const note = await this.createNote({
         title: overrides.title || 'Новая заметка',
         content: overrides.content ?? [],
         task_id: taskId,
+        ...(taskZ != null ? { z_index: taskZ } : {}),
         ...pos,
         ...overrides
       })
@@ -534,7 +617,11 @@ export const useCanvasStore = defineStore('canvas', {
       if (linkTargetType === 'note') {
         const note = this.notes.find(n => n.id === otherId)
         if (note && note.task_id !== taskId) {
-          await this.updateNote(otherId, { task_id: taskId })
+          const taskZ = this.taskZIndex(taskId)
+          await this.updateNote(otherId, {
+            task_id: taskId,
+            ...(taskZ != null ? { z_index: taskZ } : {})
+          })
         }
       }
     },
@@ -580,14 +667,30 @@ export const useCanvasStore = defineStore('canvas', {
         throw new Error('Нельзя создать циклическую иерархию задач')
       }
       await this.updateCard(taskId, { parent_id: parent })
+      if (parent) {
+        const parentZ = this.taskZIndex(parent)
+        if (parentZ != null) {
+          await this.updateCard(taskId, { z_index: parentZ })
+        }
+      }
     },
 
     async bringElementToFront(element) {
       const maxZ = this.getMaxZIndex() + 1
       if (element.type === 'task') {
         await this.updateCard(element.id, { z_index: maxZ })
+        await this.syncZIndexForHierarchy(element.id, maxZ)
       } else {
         await this.updateNote(element.id, { z_index: maxZ })
+      }
+    },
+
+    async persistElementZIndex(elementId, elementType, zIndex) {
+      if (elementType === 'task') {
+        await this.updateCard(elementId, { z_index: zIndex })
+        await this.syncZIndexForHierarchy(elementId, zIndex)
+      } else {
+        await this.updateNote(elementId, { z_index: zIndex })
       }
     },
 
