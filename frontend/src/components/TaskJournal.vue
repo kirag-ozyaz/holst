@@ -183,10 +183,28 @@ function sortByTitle(items, getTitle) {
   );
 }
 
+function normalizeParentId(parentId) {
+  return parentId || null;
+}
+
+/** Task that owns this note (task_id or task→note link); null = top-level in tree. */
+function noteParentTaskId(note) {
+  if (note.task_id && canvasStore.cards.some((c) => c.id === note.task_id)) {
+    return note.task_id;
+  }
+  const link = canvasStore.taskLinks.find(
+    (l) =>
+      l.target_id === note.id &&
+      (l.link_target_type === 'note' || l.link_target_type === 'card') &&
+      canvasStore.cards.some((c) => c.id === l.source_id)
+  );
+  return link?.source_id ?? null;
+}
+
 const childrenByParent = computed(() => {
   const map = new Map();
   canvasStore.cards.forEach(task => {
-    const key = task.parent_id || null;
+    const key = normalizeParentId(task.parent_id);
     if (!map.has(key)) {
       map.set(key, []);
     }
@@ -202,20 +220,26 @@ const childrenByParent = computed(() => {
 const rootTasks = computed(() => {
   const ids = new Set(canvasStore.cards.map(c => c.id));
   const roots = canvasStore.cards.filter(task => {
-    if (!task.parent_id) return true;
-    return !ids.has(task.parent_id);
+    const parentId = normalizeParentId(task.parent_id);
+    if (!parentId) return true;
+    return !ids.has(parentId);
   });
   return sortByTitle(roots, (t) => t.title);
+});
+
+/** Standalone notes: no task_id (and not link-attached to a task). */
+const rootNotes = computed(() => {
+  const roots = canvasStore.notes.filter((note) => noteParentTaskId(note) === null);
+  return sortByTitle(roots, (n) => n.title);
 });
 
 function childTasks(taskId) {
   return childrenByParent.value.get(taskId) || [];
 }
 
-/** Notes subordinate to a task via task_id (EditorPanel attach / create-and-attach). */
+/** Notes subordinate to a task (task_id and/or task→note links). */
 function childNotesOfTask(taskId) {
-  const notes = canvasStore.notes.filter((n) => n.task_id === taskId);
-  return sortByTitle(notes, (n) => n.title);
+  return sortByTitle(canvasStore.notesAttachedToTask(taskId), (n) => n.title);
 }
 
 function hasTaskChildren(taskId) {
@@ -242,22 +266,45 @@ function pushTaskRows(task, depth, out) {
     pushTaskRows(child, depth + 1, out);
   }
   for (const note of childNotesOfTask(task.id)) {
-    out.push({
-      key: `note:${note.id}`,
-      kind: 'note',
-      id: note.id,
-      title: note.title,
-      depth: depth + 1,
-      hasChildren: false,
-      expanded: false
-    });
+    pushNoteRow(note, depth + 1, out);
   }
+}
+
+function pushNoteRow(note, depth, out) {
+  out.push({
+    key: `note:${note.id}`,
+    kind: 'note',
+    id: note.id,
+    title: note.title,
+    depth,
+    hasChildren: false,
+    expanded: false
+  });
 }
 
 const treeRows = computed(() => {
   const rows = [];
-  for (const task of rootTasks.value) {
-    pushTaskRows(task, 0, rows);
+  const roots = [
+    ...rootTasks.value.map((task) => ({
+      kind: 'task',
+      task,
+      title: task.title || ''
+    })),
+    ...rootNotes.value.map((note) => ({
+      kind: 'note',
+      note,
+      title: note.title || ''
+    }))
+  ].sort((a, b) =>
+    a.title.localeCompare(b.title, 'ru', { sensitivity: 'base' })
+  );
+
+  for (const entry of roots) {
+    if (entry.kind === 'task') {
+      pushTaskRows(entry.task, 0, rows);
+    } else {
+      pushNoteRow(entry.note, 0, rows);
+    }
   }
   return rows;
 });
@@ -335,6 +382,9 @@ function onRowSelect(row) {
   if (el) {
     canvasStore.setSelectedElement(el);
   }
+  if (viewMode.value === 'tree' && row.hasChildren) {
+    toggleExpand(row.key);
+  }
 }
 
 function onRowContextMenu(event, row) {
@@ -361,7 +411,8 @@ watch(
   () =>
     [
       canvasStore.cards.map(c => `${c.id}:${c.parent_id}`).join(','),
-      canvasStore.notes.map(n => `${n.id}:${n.task_id || ''}`).join(',')
+      canvasStore.notes.map(n => `${n.id}:${n.task_id || ''}`).join(','),
+      canvasStore.taskLinks.map(l => `${l.id}:${l.source_id}:${l.target_id}`).join(',')
     ].join('|'),
   () => {
     const valid = new Set();
