@@ -91,6 +91,14 @@ const items = computed(() => {
   list.push({ id: 'link-mode', label: 'Режим связи (с этой карточки)', action: 'link-mode' })
   list.push({ id: 'sep4', label: '—', disabled: true })
   list.push({ id: 'delete', label: 'Удалить', action: 'delete', danger: true })
+  if (canvasStore.elementHasSubordinates(el)) {
+    list.push({
+      id: 'delete-cascade',
+      label: 'Удалить с подчинёнными',
+      action: 'delete-cascade',
+      danger: true
+    })
+  }
 
   return list
 })
@@ -144,6 +152,15 @@ async function run(item) {
       case 'delete':
         if (window.confirm(el.type === 'task' ? 'Удалить задачу?' : 'Удалить заметку?')) {
           await canvasStore.deleteElement(el)
+        }
+        break
+      case 'delete-cascade':
+        if (
+          window.confirm(
+            'Удалить этот элемент и все подчинённые задачи и заметки?'
+          )
+        ) {
+          await canvasStore.deleteElementCascade(el)
         }
         break
       default:

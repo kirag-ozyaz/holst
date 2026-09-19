@@ -1,5 +1,5 @@
 <template>
-  <div class="editor-panel">
+  <div class="editor-panel" :style="panelStyle">
     <div class="editor-header">
       <h3 class="editor-title">
         {{ element ? (element.type === 'task' ? 'Редактирование задачи' : 'Редактирование заметки') : '' }}
@@ -128,6 +128,24 @@ import { useCanvasStore } from '../stores/canvas';
 import { formatCardMetaLine } from '../utils/cardDisplay.js';
 
 const canvasStore = useCanvasStore();
+
+const PANEL_WIDTH = 360;
+
+const panelStyle = computed(() => {
+  const anchor = canvasStore.editorAnchor;
+  if (anchor) {
+    return {
+      left: `${anchor.left}px`,
+      top: `${anchor.top}px`,
+      width: `${PANEL_WIDTH}px`
+    };
+  }
+  return {
+    top: '60px',
+    right: '20px',
+    width: `${PANEL_WIDTH}px`
+  };
+});
 
 const props = defineProps({
   element: {
@@ -351,10 +369,7 @@ const closeEditor = () => {
 
 <style scoped>
 .editor-panel {
-  position: absolute;
-  top: 60px;
-  right: 20px;
-  width: 400px;
+  position: fixed;
   max-height: calc(100vh - 80px);
   background: var(--holst-bg-surface);
   color: var(--holst-text);

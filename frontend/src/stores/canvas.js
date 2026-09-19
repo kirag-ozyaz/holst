@@ -16,6 +16,7 @@ export const useCanvasStore = defineStore('canvas', {
     scale: 1,
     x: 0,
     y: 0,
+    editorAnchor: null,
     contextMenu: null
   }),
 
@@ -69,20 +70,56 @@ export const useCanvasStore = defineStore('canvas', {
       }
     },
 
-    async deleteCard(cardId) {
+    async deleteCard(cardId, options = {}) {
       try {
-        await axios.delete(`/api/cards/${cardId}`)
-        this.cards = this.cards.filter(card => card.id !== cardId)
-        this.taskLinks = this.taskLinks.filter(
-          l => l.source_id !== cardId && l.target_id !== cardId
-        )
-        if (this.selectedElement?.id === cardId) {
-          this.selectedElement = null
-        }
+        const params = options.cascade ? { cascade: true } : undefined
+        await axios.delete(`/api/cards/${cardId}`, { params })
+        this.removeTaskFromState(cardId, options.cascade)
       } catch (error) {
         console.error('Error deleting card:', error)
         throw error
       }
+    },
+
+    async deleteCardCascade(cardId) {
+      return this.deleteCard(cardId, { cascade: true })
+    },
+
+    removeTaskFromState(cardId, cascade) {
+      let removedTaskIds = new Set([cardId])
+      let removedNoteIds = new Set()
+      if (cascade) {
+        const subtree = this.collectTaskSubtree(cardId)
+        removedTaskIds = subtree.taskIds
+        removedNoteIds = subtree.noteIds
+        this.cards = this.cards.filter(card => !removedTaskIds.has(card.id))
+        this.notes = this.notes.filter(note => !removedNoteIds.has(note.id))
+        this.taskLinks = this.taskLinks.filter(
+          l =>
+            !removedTaskIds.has(l.source_id) &&
+            !removedTaskIds.has(l.target_id) &&
+            !removedNoteIds.has(l.target_id) &&
+            !removedNoteIds.has(l.source_id)
+        )
+        this.noteLinks = this.noteLinks.filter(
+          l => !removedNoteIds.has(l.source_id) && !removedNoteIds.has(l.target_id)
+        )
+      } else {
+        this.cards = this.cards.filter(card => card.id !== cardId)
+        this.taskLinks = this.taskLinks.filter(
+          l => l.source_id !== cardId && l.target_id !== cardId
+        )
+      }
+      const sel = this.selectedElement
+      if (
+        sel &&
+        (removedTaskIds.has(sel.id) ||
+          (sel.type === 'note' && removedNoteIds.has(sel.id)))
+      ) {
+        this.selectedElement = null
+        this.editorAnchor = null
+      }
+      this.closeContextMenu()
     },
 
     async createNote(noteData) {
@@ -117,9 +154,32 @@ export const useCanvasStore = defineStore('canvas', {
       }
     },
 
-    async deleteNote(noteId) {
+    async deleteNote(noteId, options = {}) {
       try {
-        await axios.delete(`/api/notes/${noteId}`)
+        const params = options.cascade ? { cascade: true } : undefined
+        await axios.delete(`/api/notes/${noteId}`, { params })
+        this.removeNoteFromState(noteId, options.cascade)
+      } catch (error) {
+        console.error('Error deleting note:', error)
+        throw error
+      }
+    },
+
+    async deleteNoteCascade(noteId) {
+      return this.deleteNote(noteId, { cascade: true })
+    },
+
+    removeNoteFromState(noteId, cascade) {
+      const removedNoteIds = cascade ? this.collectNoteSubtree(noteId) : new Set([noteId])
+      if (cascade) {
+        this.notes = this.notes.filter(note => !removedNoteIds.has(note.id))
+        this.taskLinks = this.taskLinks.filter(
+          l => !removedNoteIds.has(l.source_id) && !removedNoteIds.has(l.target_id)
+        )
+        this.noteLinks = this.noteLinks.filter(
+          l => !removedNoteIds.has(l.source_id) && !removedNoteIds.has(l.target_id)
+        )
+      } else {
         this.notes = this.notes.filter(note => note.id !== noteId)
         this.taskLinks = this.taskLinks.filter(
           l => l.source_id !== noteId && l.target_id !== noteId
@@ -127,13 +187,64 @@ export const useCanvasStore = defineStore('canvas', {
         this.noteLinks = this.noteLinks.filter(
           l => l.source_id !== noteId && l.target_id !== noteId
         )
-        if (this.selectedElement?.id === noteId) {
-          this.selectedElement = null
-        }
-      } catch (error) {
-        console.error('Error deleting note:', error)
-        throw error
       }
+      if (this.selectedElement && removedNoteIds.has(this.selectedElement.id)) {
+        this.selectedElement = null
+        this.editorAnchor = null
+      }
+      this.closeContextMenu()
+    },
+
+    collectTaskSubtree(taskId) {
+      const taskIds = new Set()
+      const queue = [taskId]
+      while (queue.length) {
+        const id = queue.pop()
+        if (taskIds.has(id)) continue
+        taskIds.add(id)
+        this.cards.forEach(card => {
+          if (card.parent_id === id) {
+            queue.push(card.id)
+          }
+        })
+      }
+      const noteIds = new Set()
+      taskIds.forEach(id => {
+        this.notesAttachedToTask(id).forEach(note => noteIds.add(note.id))
+      })
+      return { taskIds, noteIds }
+    },
+
+    collectNoteSubtree(noteId) {
+      const noteIds = new Set()
+      const queue = [noteId]
+      while (queue.length) {
+        const id = queue.pop()
+        if (noteIds.has(id)) continue
+        noteIds.add(id)
+        this.noteLinks.forEach(link => {
+          if (link.source_id === id) {
+            queue.push(link.target_id)
+          }
+        })
+      }
+      return noteIds
+    },
+
+    elementHasSubordinates(element) {
+      if (!element) return false
+      if (element.type === 'task') {
+        const { taskIds, noteIds } = this.collectTaskSubtree(element.id)
+        return taskIds.size > 1 || noteIds.size > 0
+      }
+      if (element.type === 'note') {
+        return this.noteLinks.some(link => link.source_id === element.id)
+      }
+      return false
+    },
+
+    setEditorAnchor(anchor) {
+      this.editorAnchor = anchor
     },
 
     async createTaskLink(linkData) {
@@ -227,6 +338,10 @@ export const useCanvasStore = defineStore('canvas', {
     setSelectedElement(element) {
       this.selectedElement = element
       this.clearHighlightedLink()
+      if (!element) {
+        this.editorAnchor = null
+      }
+      this.closeContextMenu()
     },
 
     toggleLinkMode() {
@@ -476,12 +591,16 @@ export const useCanvasStore = defineStore('canvas', {
       }
     },
 
-    async deleteElement(element) {
+    async deleteElement(element, options = {}) {
       if (element.type === 'task') {
-        await this.deleteCard(element.id)
+        await this.deleteCard(element.id, options)
       } else {
-        await this.deleteNote(element.id)
+        await this.deleteNote(element.id, options)
       }
+    },
+
+    async deleteElementCascade(element) {
+      return this.deleteElement(element, { cascade: true })
     },
 
     async linkElementToSelected(target) {

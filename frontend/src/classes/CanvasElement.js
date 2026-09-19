@@ -54,6 +54,7 @@ export class CanvasElement {
       }
       const previousSelection = this.canvasService.store.selectedElement;
       this.canvasService.store.setSelectedElement(elementPayload);
+      this.canvasService.requestEditorAnchor(this.id);
       if (this.canvasService.openContextMenu) {
         this.canvasService.openContextMenu(
           e.evt.clientX,
@@ -76,6 +77,7 @@ export class CanvasElement {
       return;
     }
     this.canvasService.store.setSelectedElement(elementPayload);
+    this.canvasService.requestEditorAnchor(this.id);
     this.bringToFront();
     this.layer.draw();
   }
@@ -166,6 +168,8 @@ export class CanvasElement {
     this.data.z_index = newZIndex;
 
     const handlers = this.canvasService.positionHandlers;
+    this.canvasService.requestEditorAnchor(this.id);
+
     if (handlers) {
       if (this.getType() === 'task') {
         handlers.updateCardPosition(this.id, newX, newY, newZIndex);

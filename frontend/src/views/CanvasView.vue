@@ -28,8 +28,19 @@ const linkHintText = computed(() => {
 });
 
 const onKeyDown = (e) => {
-  if (e.key === 'Escape' && canvasStore.linkMode) {
+  if (e.key !== 'Escape') {
+    return;
+  }
+  if (canvasStore.linkMode) {
     canvasStore.cancelLinkMode();
+    return;
+  }
+  if (canvasStore.contextMenu) {
+    canvasStore.closeContextMenu();
+    return;
+  }
+  if (canvasStore.selectedElement) {
+    canvasStore.setSelectedElement(null);
   }
 };
 

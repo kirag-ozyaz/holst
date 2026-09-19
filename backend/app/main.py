@@ -175,15 +175,60 @@ def update_card(card_id: str, card_data: dict, db: Session = Depends(get_db)):
     db.refresh(card)
     return card
 
+def _clear_links_for_entity(db: Session, entity_id: str) -> None:
+    db.query(TaskLink).filter(
+        (TaskLink.source_id == entity_id) | (TaskLink.target_id == entity_id)
+    ).delete(synchronize_session=False)
+    db.query(NoteLink).filter(
+        (NoteLink.source_id == entity_id) | (NoteLink.target_id == entity_id)
+    ).delete(synchronize_session=False)
+
+
+def _delete_note_cascade(note_id: str, db: Session, visited: Optional[set] = None) -> None:
+    if visited is None:
+        visited = set()
+    if note_id in visited:
+        return
+    visited.add(note_id)
+    for link in db.query(NoteLink).filter(NoteLink.source_id == note_id).all():
+        _delete_note_cascade(link.target_id, db, visited)
+    note = db.query(Note).filter(Note.id == note_id).first()
+    if not note:
+        return
+    _clear_links_for_entity(db, note_id)
+    db.delete(note)
+
+
+def _delete_task_cascade(task_id: str, db: Session) -> None:
+    for child in db.query(Task).filter(Task.parent_id == task_id).all():
+        _delete_task_cascade(child.id, db)
+    for note in db.query(Note).filter(Note.task_id == task_id).all():
+        _delete_note_cascade(note.id, db)
+    for link in db.query(TaskLink).filter(TaskLink.source_id == task_id).all():
+        if link.link_target_type in ("note", "card"):
+            linked_note = db.query(Note).filter(Note.id == link.target_id).first()
+            if linked_note:
+                _delete_note_cascade(linked_note.id, db)
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        return
+    _clear_links_for_entity(db, task_id)
+    db.delete(task)
+
+
 @app.delete("/api/cards/{card_id}")
-def delete_card(card_id: str, db: Session = Depends(get_db)):
+def delete_card(card_id: str, cascade: bool = False, db: Session = Depends(get_db)):
     card = db.query(Task).filter(Task.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
 
-    db.delete(card)
+    if cascade:
+        _delete_task_cascade(card_id, db)
+    else:
+        _clear_links_for_entity(db, card_id)
+        db.delete(card)
     db.commit()
-    return {"message": "Карточка удалена"}
+    return {"message": "Карточка удалена", "cascade": cascade}
 
 # Notes CRUD
 @app.post("/api/notes")
@@ -236,14 +281,18 @@ def update_note(note_id: str, note_data: dict, db: Session = Depends(get_db)):
     return note
 
 @app.delete("/api/notes/{note_id}")
-def delete_note(note_id: str, db: Session = Depends(get_db)):
+def delete_note(note_id: str, cascade: bool = False, db: Session = Depends(get_db)):
     note = db.query(Note).filter(Note.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Заметка не найдена")
 
-    db.delete(note)
+    if cascade:
+        _delete_note_cascade(note_id, db)
+    else:
+        _clear_links_for_entity(db, note_id)
+        db.delete(note)
     db.commit()
-    return {"message": "Заметка удалена"}
+    return {"message": "Заметка удалена", "cascade": cascade}
 
 def _task_link_would_cycle(db: Session, source_id: str, target_id: str) -> bool:
     """True if adding edge source -> target closes a cycle among tasks."""

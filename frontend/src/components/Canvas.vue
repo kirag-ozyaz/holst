@@ -27,6 +27,52 @@ const transformer = ref(null);
 const canvasStore = useCanvasStore();
 const themeStore = useThemeStore();
 
+const PANEL_WIDTH = 360;
+const PANEL_GAP = 12;
+
+const syncStageTransformToStore = () => {
+  if (!stage.value) return;
+  canvasStore.setTransform(stage.value.scaleX(), stage.value.x(), stage.value.y());
+};
+
+const publishEditorAnchor = (elementId) => {
+  if (!elementId || !stage.value || !stageContainer.value) {
+    return;
+  }
+  const element = toRaw(elements.get(elementId));
+  if (!element?.group) {
+    return;
+  }
+  const rect = element.group.children[0];
+  if (!rect) {
+    return;
+  }
+  const transform = element.group.getAbsoluteTransform();
+  const topLeft = transform.point({ x: 0, y: 0 });
+  const bottomRight = transform.point({ x: rect.width(), y: rect.height() });
+  const containerRect = stageContainer.value.getBoundingClientRect();
+  const cardLeft = containerRect.left + topLeft.x;
+  const cardTop = containerRect.top + topLeft.y;
+  const cardWidth = bottomRight.x - topLeft.x;
+  const cardHeight = bottomRight.y - topLeft.y;
+
+  let panelLeft = cardLeft + cardWidth + PANEL_GAP;
+  if (panelLeft + PANEL_WIDTH > window.innerWidth - 8) {
+    panelLeft = cardLeft - PANEL_WIDTH - PANEL_GAP;
+  }
+  panelLeft = Math.max(8, Math.min(panelLeft, window.innerWidth - PANEL_WIDTH - 8));
+  const panelTop = Math.max(56, Math.min(cardTop, window.innerHeight - 120));
+
+  canvasStore.setEditorAnchor({
+    left: panelLeft,
+    top: panelTop,
+    cardLeft,
+    cardTop,
+    cardWidth,
+    cardHeight
+  });
+};
+
 const initCanvas = () => {
   const stageObj = markRaw(new Konva.Stage({
     container: stageContainer.value,
@@ -93,6 +139,17 @@ const initCanvas = () => {
     };
     stage.value.position(newPos);
     stage.value.batchDraw();
+    syncStageTransformToStore();
+    if (canvasStore.selectedElement?.id) {
+      publishEditorAnchor(canvasStore.selectedElement.id);
+    }
+  });
+
+  stage.value.on('dragmove dragend', () => {
+    syncStageTransformToStore();
+    if (canvasStore.selectedElement?.id) {
+      publishEditorAnchor(canvasStore.selectedElement.id);
+    }
   });
 };
 
@@ -100,6 +157,9 @@ const handleResize = () => {
   if (stage.value) {
     stage.value.width(window.innerWidth);
     stage.value.height(window.innerHeight);
+  }
+  if (canvasStore.selectedElement?.id) {
+    publishEditorAnchor(canvasStore.selectedElement.id);
   }
 };
 
@@ -503,6 +563,7 @@ watch(() => canvasStore.selectedElement, (newElement) => {
     if (element) {
       element.setSelected();
     }
+    nextTick(() => publishEditorAnchor(newElement.id));
   } else {
     applyLinkPeerHighlights();
     renderLinks();
@@ -537,6 +598,7 @@ onMounted(() => {
   elementService.value.setContextMenuHandler((clientX, clientY, element, previousSelection) => {
     canvasStore.openContextMenu(clientX, clientY, element, previousSelection);
   });
+  elementService.value.setEditorAnchorRequest(publishEditorAnchor);
   initCanvas();
   loadData();
   window.addEventListener('resize', handleResize);

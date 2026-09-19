@@ -125,6 +125,23 @@ def test_create_note_with_task_id():
     assert reloaded["task_id"] == task["id"]
 
 
+def test_cascade_delete_task_with_subtasks_and_note():
+    parent = client.post("/api/cards", json={"title": "Parent"}).json()
+    child = client.post(
+        "/api/cards",
+        json={"title": "Child", "parent_id": parent["id"]},
+    ).json()
+    note = client.post(
+        "/api/notes",
+        json={"title": "Attached", "task_id": parent["id"]},
+    ).json()
+    r = client.delete(f"/api/cards/{parent['id']}", params={"cascade": True})
+    assert r.status_code == 200
+    assert client.get(f"/api/cards/{parent['id']}").status_code == 404
+    assert client.get(f"/api/cards/{child['id']}").status_code == 404
+    assert client.get(f"/api/notes/{note['id']}").status_code == 404
+
+
 def test_task_link_cycle_rejected():
     a = client.post("/api/cards", json={"title": "A"}).json()
     b = client.post("/api/cards", json={"title": "B"}).json()
