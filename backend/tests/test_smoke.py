@@ -36,6 +36,29 @@ def test_card_and_note_crud():
     assert r.json()["title"] == "C2"
 
 
+def test_note_task_attach_and_link():
+    task = client.post("/api/cards", json={"title": "T1"}).json()
+    note = client.post("/api/notes", json={"title": "N1"}).json()
+    updated = client.put(
+        f"/api/notes/{note['id']}",
+        json={"task_id": task["id"]},
+    ).json()
+    assert updated["task_id"] == task["id"]
+    link = client.post(
+        "/api/task-links",
+        json={
+            "source_id": task["id"],
+            "target_id": note["id"],
+            "link_target_type": "note",
+        },
+    )
+    assert link.status_code == 200
+    note2 = client.get(f"/api/notes/{note['id']}").json()
+    assert note2["task_id"] == task["id"]
+    cleared = client.put(f"/api/notes/{note['id']}", json={"task_id": None}).json()
+    assert cleared.get("task_id") is None
+
+
 def test_task_link_cycle_rejected():
     a = client.post("/api/cards", json={"title": "A"}).json()
     b = client.post("/api/cards", json={"title": "B"}).json()

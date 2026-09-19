@@ -32,10 +32,62 @@
         ></textarea>
       </div>
 
-      <div v-if="relatedLinks.length" class="form-group">
+      <div v-if="element.type === 'task'" class="form-group">
+        <label>Привязанные заметки</label>
+        <ul v-if="attachedNotes.length" class="links-list">
+          <li v-for="note in attachedNotes" :key="note.id">
+            <span class="link-label">{{ note.title || 'Без названия' }}</span>
+            <button
+              type="button"
+              class="btn-link-action btn-link-detach"
+              title="Отвязать"
+              @click="detachNote(note.id)"
+            >
+              Отвязать
+            </button>
+          </li>
+        </ul>
+        <p v-else class="hint-text">Нет привязанных заметок</p>
+        <div class="attach-row">
+          <select v-model="selectedNoteToAttach" class="form-input form-select">
+            <option value="">— выберите заметку —</option>
+            <option v-for="note in availableNotes" :key="note.id" :value="note.id">
+              {{ note.title || 'Без названия' }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="!selectedNoteToAttach"
+            @click="attachSelectedNote"
+          >
+            Привязать
+          </button>
+        </div>
+        <button type="button" class="btn btn-secondary btn-block" @click="createAndAttachNote">
+          + Создать новую заметку
+        </button>
+      </div>
+
+      <div v-if="element.type === 'note'" class="form-group">
+        <label for="parent-task">Задача (привязка)</label>
+        <select
+          id="parent-task"
+          v-model="parentTaskId"
+          class="form-input form-select"
+          @change="onParentTaskChange"
+        >
+          <option value="">— без задачи —</option>
+          <option v-for="task in canvasStore.cards" :key="task.id" :value="task.id">
+            {{ task.title || 'Без названия' }}
+          </option>
+        </select>
+      </div>
+
+      <div v-if="otherRelatedLinks.length" class="form-group">
         <label>Связи</label>
         <ul class="links-list">
-          <li v-for="link in relatedLinks" :key="`${link.kind}-${link.id}`">
+          <li v-for="link in otherRelatedLinks" :key="`${link.kind}-${link.id}`">
             <span class="link-label">{{ linkLabel(link) }}</span>
             <button type="button" class="btn-link-delete" @click="removeLink(link)">×</button>
           </li>
@@ -72,17 +124,57 @@ const form = ref({
   content: ''
 });
 
-const relatedLinks = computed(() => {
+const selectedNoteToAttach = ref('');
+const parentTaskId = ref('');
+
+const attachedNotes = computed(() => {
+  if (!props.element || props.element.type !== 'task') return [];
+  return canvasStore.notesAttachedToTask(props.element.id);
+});
+
+const availableNotes = computed(() => {
+  if (!props.element || props.element.type !== 'task') return [];
+  return canvasStore.notesAvailableToAttach(props.element.id);
+});
+
+const otherRelatedLinks = computed(() => {
   if (!props.element) return [];
-  return canvasStore.linksForElement(props.element.id);
+  const all = canvasStore.linksForElement(props.element.id);
+  if (props.element.type !== 'task') {
+    return all;
+  }
+  const attachedIds = new Set(attachedNotes.value.map(n => n.id));
+  return all.filter(link => {
+    const isTaskNoteLink =
+      link.kind === 'task' &&
+      (link.link_target_type === 'note' || link.link_target_type === 'card') &&
+      link.source_id === props.element.id &&
+      attachedIds.has(link.target_id);
+    return !isTaskNoteLink;
+  });
 });
 
 watch(() => props.element, (newElement) => {
   if (newElement) {
     form.value.title = newElement.title || '';
     form.value.content = formatContentForEdit(newElement.content);
+    selectedNoteToAttach.value = '';
+    parentTaskId.value =
+      newElement.type === 'note' && newElement.task_id ? newElement.task_id : '';
   }
 }, { immediate: true });
+
+watch(
+  () => canvasStore.notes.map(n => `${n.id}:${n.task_id}:${n.title}`).join('|'),
+  () => {
+    if (props.element?.type === 'note') {
+      const fresh = canvasStore.notes.find(n => n.id === props.element.id);
+      if (fresh) {
+        parentTaskId.value = fresh.task_id || '';
+      }
+    }
+  }
+);
 
 function formatContentForEdit(content) {
   if (content == null) return '';
@@ -154,6 +246,50 @@ function linkLabel(link) {
   const note = canvasStore.notes.find(n => n.id === otherId);
   if (note) return `→ ${note.title || 'Заметка'}`;
   return `→ ${otherId}`;
+}
+
+async function attachSelectedNote() {
+  if (!props.element || !selectedNoteToAttach.value) return;
+  try {
+    await canvasStore.attachNoteToTask(props.element.id, selectedNoteToAttach.value);
+    selectedNoteToAttach.value = '';
+  } catch (error) {
+    console.error(error);
+    alert('Не удалось привязать заметку');
+  }
+}
+
+async function createAndAttachNote() {
+  if (!props.element) return;
+  try {
+    await canvasStore.createNoteForTask(props.element.id);
+  } catch (error) {
+    console.error(error);
+    alert('Не удалось создать заметку');
+  }
+}
+
+async function detachNote(noteId) {
+  if (!props.element) return;
+  try {
+    await canvasStore.detachNoteFromTask(props.element.id, noteId);
+  } catch (error) {
+    console.error(error);
+    alert('Не удалось отвязать заметку');
+  }
+}
+
+async function onParentTaskChange() {
+  if (!props.element || props.element.type !== 'note') return;
+  try {
+    await canvasStore.setNoteParentTask(
+      props.element.id,
+      parentTaskId.value || null
+    );
+  } catch (error) {
+    console.error(error);
+    alert('Не удалось изменить привязку к задаче');
+  }
 }
 
 async function removeLink(link) {
@@ -303,8 +439,68 @@ const closeEditor = () => {
   color: white;
 }
 
+.btn-secondary {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #d1d5db;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 8px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.btn-block {
+  width: 100%;
+  margin-top: 8px;
+}
+
 .btn-danger {
   background: #ef4444;
   color: white;
+}
+
+.form-select {
+  cursor: pointer;
+}
+
+.attach-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 8px;
+}
+
+.attach-row .form-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint-text {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.btn-link-action {
+  border: none;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-link-detach {
+  background: #fef3c7;
+  color: #92400e;
 }
 </style>

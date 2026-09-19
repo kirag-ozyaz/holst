@@ -145,8 +145,19 @@ export const useCanvasStore = defineStore('canvas', {
 
     async deleteTaskLink(linkId) {
       try {
+        const link = this.taskLinks.find(l => l.id === linkId)
         await axios.delete(`/api/task-links/${linkId}`)
         this.taskLinks = this.taskLinks.filter(l => l.id !== linkId)
+        if (
+          link &&
+          (link.link_target_type === 'note' || link.link_target_type === 'card') &&
+          link.target_id
+        ) {
+          const note = this.notes.find(n => n.id === link.target_id)
+          if (note && note.task_id === link.source_id) {
+            await this.updateNote(link.target_id, { task_id: null })
+          }
+        }
       } catch (error) {
         console.error('Error deleting task link:', error)
         throw error
@@ -218,6 +229,114 @@ export const useCanvasStore = defineStore('canvas', {
       this.pendingLinkSource = null
     },
 
+    findTaskNoteLink(taskId, noteId) {
+      return this.taskLinks.find(
+        l =>
+          l.source_id === taskId &&
+          l.target_id === noteId &&
+          (l.link_target_type === 'note' || l.link_target_type === 'card')
+      )
+    },
+
+    async ensureTaskNoteLink(taskId, noteId) {
+      if (this.findTaskNoteLink(taskId, noteId)) {
+        return
+      }
+      await this.createTaskLink({
+        source_id: taskId,
+        target_id: noteId,
+        link_target_type: 'note',
+        link_type: 'depends_on'
+      })
+    },
+
+    notesAttachedToTask(taskId) {
+      const ids = new Set()
+      this.notes.forEach(note => {
+        if (note.task_id === taskId) {
+          ids.add(note.id)
+        }
+      })
+      this.taskLinks.forEach(link => {
+        if (
+          link.source_id === taskId &&
+          (link.link_target_type === 'note' || link.link_target_type === 'card') &&
+          link.target_id
+        ) {
+          ids.add(link.target_id)
+        }
+      })
+      return this.notes.filter(n => ids.has(n.id))
+    },
+
+    notesAvailableToAttach(taskId) {
+      const attached = new Set(this.notesAttachedToTask(taskId).map(n => n.id))
+      return this.notes.filter(n => !attached.has(n.id))
+    },
+
+    async attachNoteToTask(taskId, noteId) {
+      const note = this.notes.find(n => n.id === noteId)
+      if (!note) {
+        throw new Error('Заметка не найдена')
+      }
+      const prevTaskId = note.task_id
+      if (prevTaskId && prevTaskId !== taskId) {
+        const oldLink = this.findTaskNoteLink(prevTaskId, noteId)
+        if (oldLink) {
+          await this.deleteTaskLink(oldLink.id)
+        }
+      }
+      await this.updateNote(noteId, { task_id: taskId })
+      await this.ensureTaskNoteLink(taskId, noteId)
+    },
+
+    async detachNoteFromTask(taskId, noteId) {
+      const note = this.notes.find(n => n.id === noteId)
+      if (note && note.task_id === taskId) {
+        await this.updateNote(noteId, { task_id: null })
+      }
+      const link = this.findTaskNoteLink(taskId, noteId)
+      if (link) {
+        await this.deleteTaskLink(link.id)
+      }
+    },
+
+    async createNoteForTask(taskId, overrides = {}) {
+      const pos = overrides.x != null && overrides.y != null
+        ? { x: overrides.x, y: overrides.y }
+        : { x: Math.round(120 + Math.random() * 400), y: Math.round(120 + Math.random() * 400) }
+      const note = await this.createNote({
+        title: overrides.title || 'Новая заметка',
+        content: overrides.content ?? [],
+        task_id: taskId,
+        ...pos,
+        ...overrides
+      })
+      await this.ensureTaskNoteLink(taskId, note.id)
+      return note
+    },
+
+    async setNoteParentTask(noteId, taskId) {
+      const note = this.notes.find(n => n.id === noteId)
+      if (!note) {
+        throw new Error('Заметка не найдена')
+      }
+      const prevTaskId = note.task_id
+      const nextTaskId = taskId || null
+      if (nextTaskId === prevTaskId) {
+        if (nextTaskId) {
+          await this.ensureTaskNoteLink(nextTaskId, noteId)
+        }
+        return
+      }
+      if (prevTaskId) {
+        await this.detachNoteFromTask(prevTaskId, noteId)
+      }
+      if (nextTaskId) {
+        await this.attachNoteToTask(nextTaskId, noteId)
+      }
+    },
+
     async createLinkBetween(source, target) {
       if (source.type === 'note' && target.type === 'note') {
         await this.createNoteLink({
@@ -236,12 +355,29 @@ export const useCanvasStore = defineStore('canvas', {
         throw new Error('Invalid link pair')
       }
 
-      await this.createTaskLink({
-        source_id: taskId,
-        target_id: otherId,
-        link_target_type: otherType === 'note' ? 'note' : 'task',
-        link_type: 'depends_on'
-      })
+      const linkTargetType = otherType === 'note' ? 'note' : 'task'
+      const existing = this.taskLinks.find(
+        l =>
+          l.source_id === taskId &&
+          l.target_id === otherId &&
+          (l.link_target_type === linkTargetType ||
+            (linkTargetType === 'task' && l.link_target_type === 'card'))
+      )
+      if (!existing) {
+        await this.createTaskLink({
+          source_id: taskId,
+          target_id: otherId,
+          link_target_type: linkTargetType,
+          link_type: 'depends_on'
+        })
+      }
+
+      if (linkTargetType === 'note') {
+        const note = this.notes.find(n => n.id === otherId)
+        if (note && note.task_id !== taskId) {
+          await this.updateNote(otherId, { task_id: taskId })
+        }
+      }
     },
 
     linksForElement(elementId) {
