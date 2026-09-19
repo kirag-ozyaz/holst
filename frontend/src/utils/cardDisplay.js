@@ -37,6 +37,12 @@ export function formatCardCanvasText(type, data) {
   return `${formatCardMetaLine(type, data)}\n${title}`
 }
 
+/** Single-line label for selects and journal rows: meta + title. */
+export function formatCardListLine(type, data) {
+  const title = data?.title || 'Без названия'
+  return `${formatCardMetaLine(type, data)} — ${title}`
+}
+
 export function isDarkTheme() {
   return document.documentElement.getAttribute('data-theme') === 'dark'
 }

@@ -1,5 +1,9 @@
 <template>
-  <aside class="task-journal" aria-label="Журнал задач">
+  <aside
+    class="task-journal"
+    aria-label="Журнал задач"
+    :style="{ width: `${journalWidth}px` }"
+  >
     <div class="journal-header">
       <div class="journal-title-block">
         <h2 class="journal-title">Журнал задач</h2>
@@ -69,23 +73,42 @@
             @click="onRowSelect(row)"
           >
             <span v-if="row.kind === 'note'" class="journal-kind" aria-hidden="true">📝</span>
-            <span class="journal-label-text">
-              <span class="journal-meta">{{ rowMeta(row) }}</span>
-              <span class="journal-task-title">{{ row.title || 'Без названия' }}</span>
-            </span>
+            <span class="journal-label-text">{{ rowLine(row) }}</span>
           </button>
         </li>
       </ul>
     </div>
+    <div
+      class="journal-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Изменить ширину журнала"
+      @mousedown.prevent="startResize"
+    />
   </aside>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
-import { formatCardMetaLine } from '../utils/cardDisplay.js';
+import { formatCardListLine } from '../utils/cardDisplay.js';
 
 const JOURNAL_VIEW_KEY = 'holst.journal.viewMode';
+const JOURNAL_WIDTH_KEY = 'holst.journal.width';
+const JOURNAL_WIDTH_MIN = 220;
+const JOURNAL_WIDTH_MAX = 560;
+const JOURNAL_WIDTH_DEFAULT = 300;
+
+function readStoredJournalWidth() {
+  if (typeof localStorage === 'undefined') {
+    return JOURNAL_WIDTH_DEFAULT;
+  }
+  const raw = Number.parseInt(localStorage.getItem(JOURNAL_WIDTH_KEY) || '', 10);
+  if (!Number.isFinite(raw)) {
+    return JOURNAL_WIDTH_DEFAULT;
+  }
+  return Math.min(JOURNAL_WIDTH_MAX, Math.max(JOURNAL_WIDTH_MIN, raw));
+}
 
 const canvasStore = useCanvasStore();
 const collapsed = ref(false);
@@ -95,6 +118,46 @@ const viewMode = ref(
     ? 'list'
     : 'tree'
 );
+const journalWidth = ref(readStoredJournalWidth());
+const resizing = ref(false);
+
+function persistJournalWidth(width) {
+  try {
+    localStorage.setItem(JOURNAL_WIDTH_KEY, String(width));
+  } catch {
+    /* ignore */
+  }
+}
+
+function startResize(event) {
+  resizing.value = true;
+  const startX = event.clientX;
+  const startWidth = journalWidth.value;
+
+  const onMove = (moveEvent) => {
+    const next = Math.min(
+      JOURNAL_WIDTH_MAX,
+      Math.max(JOURNAL_WIDTH_MIN, startWidth + (moveEvent.clientX - startX))
+    );
+    journalWidth.value = next;
+  };
+
+  const onUp = () => {
+    resizing.value = false;
+    persistJournalWidth(journalWidth.value);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+
+onUnmounted(() => {
+  if (resizing.value) {
+    persistJournalWidth(journalWidth.value);
+  }
+});
 
 function setViewMode(mode) {
   viewMode.value = mode;
@@ -105,13 +168,13 @@ function setViewMode(mode) {
   }
 }
 
-function rowMeta(row) {
+function rowLine(row) {
   if (row.kind === 'note') {
     const note = canvasStore.notes.find(n => n.id === row.id);
-    return formatCardMetaLine('note', note || {});
+    return formatCardListLine('note', note || { title: row.title });
   }
   const task = canvasStore.cards.find(c => c.id === row.id);
-  return formatCardMetaLine('task', task || {});
+  return formatCardListLine('task', task || { title: row.title });
 }
 
 function sortByTitle(items, getTitle) {
@@ -320,7 +383,6 @@ watch(
   position: absolute;
   top: 70px;
   left: 10px;
-  width: 300px;
   max-height: calc(100vh - 90px);
   background: var(--holst-bg-surface);
   color: var(--holst-text);
@@ -468,7 +530,7 @@ watch(
 .journal-label {
   flex: 1;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 4px;
   text-align: left;
   border: none;
@@ -483,28 +545,40 @@ watch(
 }
 
 .journal-label-text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
   min-width: 0;
   flex: 1;
-}
-
-.journal-meta {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--holst-text-muted);
-  line-height: 1.2;
-}
-
-.journal-task-title {
-  min-width: 0;
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.3;
+}
+
+.journal-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+}
+
+.journal-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.task-journal:hover .journal-resize-handle::after,
+.journal-resize-handle:active::after {
+  background: var(--holst-border-strong);
 }
 
 .journal-kind {
