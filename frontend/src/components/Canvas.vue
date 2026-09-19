@@ -148,7 +148,7 @@ const renderLinks = () => {
   };
 
   /** Directed edge: arrow at target (source_id → target_id). */
-  const drawLinkArrow = (sourceId, targetId, stroke = 'gray') => {
+  const drawLinkArrow = (linkKind, linkId, sourceId, targetId, stroke, highlighted = false) => {
     const sourceElement = toRaw(elements.get(sourceId));
     const targetElement = toRaw(elements.get(targetId));
     if (sourceElement && targetElement && sourceElement.group && targetElement.group) {
@@ -156,29 +156,72 @@ const renderLinks = () => {
       const to = elementCenter(targetElement);
       const arrow = markRaw(new Konva.Arrow({
         points: [from.x, from.y, to.x, to.y],
-        stroke,
-        fill: stroke,
-        strokeWidth: 2,
-        pointerLength: 12,
-        pointerWidth: 12,
+        stroke: highlighted ? '#2563eb' : stroke,
+        fill: highlighted ? '#2563eb' : stroke,
+        strokeWidth: highlighted ? 4 : 2,
+        pointerLength: highlighted ? 16 : 12,
+        pointerWidth: highlighted ? 14 : 12,
         pointerAtBeginning: false,
         pointerAtEnding: true,
-        dash: [6, 4],
-        listening: false
+        dash: highlighted ? [] : [6, 4],
+        listening: false,
+        shadowColor: highlighted ? '#2563eb' : undefined,
+        shadowBlur: highlighted ? 8 : 0,
+        shadowOpacity: highlighted ? 0.45 : 0
       }));
       layer.value.add(arrow);
-      arrow.moveToBottom();
+      if (highlighted) {
+        arrow.moveToTop();
+      } else {
+        arrow.moveToBottom();
+      }
       linkElements.push(arrow);
     }
   };
 
-  canvasStore.taskLinks.forEach(link => {
-    drawLinkArrow(link.source_id, link.target_id, '#64748b');
-  });
+  const taskLinkEntries = canvasStore.taskLinks.map(link => ({
+    kind: 'task',
+    id: link.id,
+    source_id: link.source_id,
+    target_id: link.target_id,
+    stroke: '#64748b'
+  }));
+  const noteLinkEntries = canvasStore.noteLinks.map(link => ({
+    kind: 'note',
+    id: link.id,
+    source_id: link.source_id,
+    target_id: link.target_id,
+    stroke: '#ca8a04'
+  }));
+  const allLinks = [...taskLinkEntries, ...noteLinkEntries];
+  const highlightKey = canvasStore.highlightedLinkKey;
 
-  canvasStore.noteLinks.forEach(link => {
-    drawLinkArrow(link.source_id, link.target_id, '#ca8a04');
-  });
+  allLinks
+    .filter(entry => highlightKey !== canvasStore.linkKey(entry.kind, entry.id))
+    .forEach(entry => {
+      drawLinkArrow(entry.kind, entry.id, entry.source_id, entry.target_id, entry.stroke, false);
+    });
+
+  allLinks
+    .filter(entry => highlightKey === canvasStore.linkKey(entry.kind, entry.id))
+    .forEach(entry => {
+      drawLinkArrow(entry.kind, entry.id, entry.source_id, entry.target_id, entry.stroke, true);
+    });
+};
+
+const applyLinkPeerHighlights = () => {
+  const peerId = canvasStore.linkPeerElementId;
+  const selectedId = canvasStore.selectedElement?.id;
+
+  for (const [id, element] of elements) {
+    const raw = toRaw(element);
+    if (!raw?.setLinkPeerHighlight) continue;
+    if (id === selectedId) {
+      raw.setLinkPeerHighlight(false);
+      continue;
+    }
+    raw.setLinkPeerHighlight(Boolean(peerId && id === peerId));
+  }
 };
 
 const updateCardPosition = async (cardId, x, y, zIndex) => {
@@ -271,6 +314,19 @@ watch(() => canvasStore.noteLinks.length, () => {
   nextTick(() => renderCanvas());
 });
 
+watch(
+  () => [canvasStore.highlightedLinkKey, canvasStore.linkPeerElementId],
+  () => {
+    nextTick(() => {
+      applyLinkPeerHighlights();
+      renderLinks();
+      if (layer.value) {
+        layer.value.draw();
+      }
+    });
+  }
+);
+
 // Watch for selected element changes
 let previousSelectedElement = null;
 watch(() => canvasStore.selectedElement, (newElement) => {
@@ -286,6 +342,9 @@ watch(() => canvasStore.selectedElement, (newElement) => {
     if (element) {
       element.setSelected();
     }
+  } else {
+    applyLinkPeerHighlights();
+    renderLinks();
   }
 
   if (layer.value) {

@@ -33,21 +33,7 @@
       </div>
 
       <div v-if="element.type === 'task'" class="form-group">
-        <label>Привязанные заметки</label>
-        <ul v-if="attachedNotes.length" class="links-list">
-          <li v-for="note in attachedNotes" :key="note.id">
-            <span class="link-label">{{ note.title || 'Без названия' }}</span>
-            <button
-              type="button"
-              class="btn-link-action btn-link-detach"
-              title="Отвязать"
-              @click="detachNote(note.id)"
-            >
-              Отвязать
-            </button>
-          </li>
-        </ul>
-        <p v-else class="hint-text">Нет привязанных заметок</p>
+        <label>Привязать заметку</label>
         <div class="attach-row">
           <select v-model="selectedNoteToAttach" class="form-input form-select">
             <option value="">— выберите заметку —</option>
@@ -84,14 +70,43 @@
         </select>
       </div>
 
-      <div v-if="otherRelatedLinks.length" class="form-group">
+      <div class="form-group">
         <label>Связи</label>
-        <ul class="links-list">
-          <li v-for="link in otherRelatedLinks" :key="`${link.kind}-${link.id}`">
-            <span class="link-label">{{ linkLabel(link) }}</span>
-            <button type="button" class="btn-link-delete" @click="removeLink(link)">×</button>
+        <p v-if="!allRelatedLinks.length" class="hint-text">
+          Нет связей — режим «Связь» на холсте или привязка заметки к задаче
+        </p>
+        <ul v-else class="links-list links-list-interactive">
+          <li
+            v-for="link in allRelatedLinks"
+            :key="`${link.kind}-${link.id}`"
+            :class="{ 'link-row-active': isLinkHighlighted(link) }"
+            @click="selectLink(link)"
+          >
+            <span class="link-label">{{ linkRowLabel(link) }}</span>
+            <div class="link-row-actions" @click.stop>
+              <button
+                v-if="canDetachTaskNote(link)"
+                type="button"
+                class="btn-link-action btn-link-detach"
+                title="Отвязать заметку"
+                @click="detachTaskNoteLink(link)"
+              >
+                Отвязать
+              </button>
+              <button
+                type="button"
+                class="btn-link-delete"
+                title="Удалить связь"
+                @click="removeLink(link)"
+              >
+                ×
+              </button>
+            </div>
           </li>
         </ul>
+        <p v-if="allRelatedLinks.length" class="hint-text hint-text-sm">
+          Нажмите на связь, чтобы подсветить стрелку на холсте
+        </p>
       </div>
 
       <div class="form-actions">
@@ -127,31 +142,14 @@ const form = ref({
 const selectedNoteToAttach = ref('');
 const parentTaskId = ref('');
 
-const attachedNotes = computed(() => {
-  if (!props.element || props.element.type !== 'task') return [];
-  return canvasStore.notesAttachedToTask(props.element.id);
-});
-
 const availableNotes = computed(() => {
   if (!props.element || props.element.type !== 'task') return [];
   return canvasStore.notesAvailableToAttach(props.element.id);
 });
 
-const otherRelatedLinks = computed(() => {
+const allRelatedLinks = computed(() => {
   if (!props.element) return [];
-  const all = canvasStore.linksForElement(props.element.id);
-  if (props.element.type !== 'task') {
-    return all;
-  }
-  const attachedIds = new Set(attachedNotes.value.map(n => n.id));
-  return all.filter(link => {
-    const isTaskNoteLink =
-      link.kind === 'task' &&
-      (link.link_target_type === 'note' || link.link_target_type === 'card') &&
-      link.source_id === props.element.id &&
-      attachedIds.has(link.target_id);
-    return !isTaskNoteLink;
-  });
+  return canvasStore.linksForElement(props.element.id);
 });
 
 watch(() => props.element, (newElement) => {
@@ -239,13 +237,58 @@ const deleteElement = async () => {
   }
 };
 
-function linkLabel(link) {
-  const otherId = link.source_id === props.element.id ? link.target_id : link.source_id;
-  const card = canvasStore.cards.find(c => c.id === otherId);
-  if (card) return `→ ${card.title || 'Задача'}`;
-  const note = canvasStore.notes.find(n => n.id === otherId);
-  if (note) return `→ ${note.title || 'Заметка'}`;
-  return `→ ${otherId}`;
+function elementTitle(id, link) {
+  const card = canvasStore.cards.find(c => c.id === id);
+  if (card) return card.title || 'Задача';
+  const note = canvasStore.notes.find(n => n.id === id);
+  if (note) return note.title || 'Заметка';
+  return id;
+}
+
+function linkTypeHint(link) {
+  if (link.kind === 'note') return 'заметка↔заметка';
+  if (link.link_target_type === 'note' || link.link_target_type === 'card') {
+    return 'задача→заметка';
+  }
+  return 'задача→задача';
+}
+
+function linkRowLabel(link) {
+  const from = elementTitle(link.source_id, link);
+  const to = elementTitle(link.target_id, link);
+  return `${from} → ${to} (${linkTypeHint(link)})`;
+}
+
+function isLinkHighlighted(link) {
+  return canvasStore.highlightedLinkKey === canvasStore.linkKey(link.kind, link.id);
+}
+
+function selectLink(link) {
+  canvasStore.setHighlightedLink(link.kind, link.id);
+}
+
+function isTaskNoteLink(link) {
+  return (
+    link.kind === 'task' &&
+    (link.link_target_type === 'note' || link.link_target_type === 'card')
+  );
+}
+
+function canDetachTaskNote(link) {
+  if (!isTaskNoteLink(link) || !props.element) return false;
+  if (props.element.type === 'task' && link.source_id === props.element.id) return true;
+  if (props.element.type === 'note' && link.target_id === props.element.id) return true;
+  return false;
+}
+
+async function detachTaskNoteLink(link) {
+  if (!canDetachTaskNote(link)) return;
+  try {
+    await canvasStore.detachNoteFromTask(link.source_id, link.target_id);
+  } catch (error) {
+    console.error(error);
+    alert('Не удалось отвязать заметку');
+  }
 }
 
 async function attachSelectedNote() {
@@ -266,16 +309,6 @@ async function createAndAttachNote() {
   } catch (error) {
     console.error(error);
     alert('Не удалось создать заметку');
-  }
-}
-
-async function detachNote(noteId) {
-  if (!props.element) return;
-  try {
-    await canvasStore.detachNoteFromTask(props.element.id, noteId);
-  } catch (error) {
-    console.error(error);
-    alert('Не удалось отвязать заметку');
   }
 }
 
@@ -392,8 +425,22 @@ const closeEditor = () => {
   padding: 0;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  max-height: 120px;
+  max-height: 200px;
   overflow-y: auto;
+}
+
+.links-list-interactive li {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.links-list-interactive li:hover {
+  background: #f9fafb;
+}
+
+.links-list li.link-row-active {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #2563eb;
 }
 
 .links-list li {
@@ -403,6 +450,14 @@ const closeEditor = () => {
   padding: 8px 10px;
   border-bottom: 1px solid #f3f4f6;
   font-size: 13px;
+  gap: 8px;
+}
+
+.link-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .links-list li:last-child {
@@ -489,6 +544,11 @@ const closeEditor = () => {
   margin: 0 0 8px;
   font-size: 13px;
   color: #6b7280;
+}
+
+.hint-text-sm {
+  margin: 6px 0 0;
+  font-size: 12px;
 }
 
 .btn-link-action {

@@ -105,6 +105,34 @@ export class CanvasElement {
   }
 
   /**
+   * Подсветка второго конца выбранной связи (не заменяет выделение карточки).
+   */
+  setLinkPeerHighlight(active) {
+    const rect = this.group.children[0];
+    if (!rect) return;
+
+    if (active) {
+      if (!this.peerHighlightStyles) {
+        this.peerHighlightStyles = {
+          stroke: rect.stroke(),
+          strokeWidth: rect.strokeWidth()
+        };
+      }
+      rect.stroke('#2563eb');
+      rect.strokeWidth(3);
+      return;
+    }
+
+    if (this.peerHighlightStyles) {
+      if (!this.originalStyles) {
+        rect.stroke(this.peerHighlightStyles.stroke);
+        rect.strokeWidth(this.peerHighlightStyles.strokeWidth);
+      }
+      this.peerHighlightStyles = null;
+    }
+  }
+
+  /**
    * Обработчик окончания перетаскивания
    */
   onDragEnd() {

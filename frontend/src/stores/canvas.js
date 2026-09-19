@@ -8,6 +8,8 @@ export const useCanvasStore = defineStore('canvas', {
     taskLinks: [],
     noteLinks: [],
     selectedElement: null,
+    highlightedLinkKey: null,
+    linkPeerElementId: null,
     linkMode: false,
     pendingLinkSource: null,
     scale: 1,
@@ -146,6 +148,9 @@ export const useCanvasStore = defineStore('canvas', {
     async deleteTaskLink(linkId) {
       try {
         const link = this.taskLinks.find(l => l.id === linkId)
+        if (link && this.highlightedLinkKey === this.linkKey('task', linkId)) {
+          this.clearHighlightedLink()
+        }
         await axios.delete(`/api/task-links/${linkId}`)
         this.taskLinks = this.taskLinks.filter(l => l.id !== linkId)
         if (
@@ -177,6 +182,9 @@ export const useCanvasStore = defineStore('canvas', {
 
     async deleteNoteLink(linkId) {
       try {
+        if (this.highlightedLinkKey === this.linkKey('note', linkId)) {
+          this.clearHighlightedLink()
+        }
         await axios.delete(`/api/note-links/${linkId}`)
         this.noteLinks = this.noteLinks.filter(l => l.id !== linkId)
       } catch (error) {
@@ -185,8 +193,38 @@ export const useCanvasStore = defineStore('canvas', {
       }
     },
 
+    linkKey(kind, id) {
+      return `${kind}-${id}`
+    },
+
+    setHighlightedLink(kind, id) {
+      const key = this.linkKey(kind, id)
+      if (this.highlightedLinkKey === key) {
+        this.clearHighlightedLink()
+        return
+      }
+      this.highlightedLinkKey = key
+      const link =
+        kind === 'task'
+          ? this.taskLinks.find(l => l.id === id)
+          : this.noteLinks.find(l => l.id === id)
+      const selectedId = this.selectedElement?.id
+      if (link && selectedId) {
+        this.linkPeerElementId =
+          link.source_id === selectedId ? link.target_id : link.source_id
+      } else {
+        this.linkPeerElementId = null
+      }
+    },
+
+    clearHighlightedLink() {
+      this.highlightedLinkKey = null
+      this.linkPeerElementId = null
+    },
+
     setSelectedElement(element) {
       this.selectedElement = element
+      this.clearHighlightedLink()
     },
 
     toggleLinkMode() {
