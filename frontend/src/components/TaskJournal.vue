@@ -160,9 +160,11 @@ watch(
   left: 10px;
   width: 300px;
   max-height: calc(100vh - 90px);
-  background: white;
+  background: var(--holst-bg-surface);
+  color: var(--holst-text);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--holst-shadow-md);
+  border: 1px solid var(--holst-border);
   z-index: 999;
   display: flex;
   flex-direction: column;
@@ -174,24 +176,24 @@ watch(
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--holst-border);
 }
 
 .journal-title {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--holst-text);
 }
 
 .journal-toggle {
   border: none;
-  background: #f3f4f6;
+  background: var(--holst-bg-muted);
   width: 28px;
   height: 28px;
   border-radius: 6px;
   cursor: pointer;
-  color: #374151;
+  color: var(--holst-text);
 }
 
 .journal-body {
@@ -204,7 +206,7 @@ watch(
   margin: 0;
   padding: 14px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--holst-text-muted);
 }
 
 .journal-list {
@@ -222,7 +224,7 @@ watch(
 }
 
 .journal-row-selected {
-  background: #eff6ff;
+  background: var(--holst-accent-soft);
 }
 
 .journal-row-has-children .journal-label {
@@ -236,13 +238,13 @@ watch(
   border: none;
   background: transparent;
   cursor: pointer;
-  color: #4b5563;
+  color: var(--holst-text-muted);
   font-size: 12px;
   border-radius: 4px;
 }
 
 .journal-chevron:hover {
-  background: #f3f4f6;
+  background: var(--holst-bg-muted);
 }
 
 .journal-chevron-placeholder {
@@ -257,7 +259,7 @@ watch(
   background: transparent;
   cursor: pointer;
   font-size: 13px;
-  color: #111827;
+  color: var(--holst-text);
   padding: 6px 4px;
   border-radius: 4px;
   min-width: 0;
@@ -267,6 +269,6 @@ watch(
 }
 
 .journal-label:hover {
-  background: #f9fafb;
+  background: var(--holst-bg-muted);
 }
 </style>

@@ -11,6 +11,7 @@ import { NoteCard } from '../classes/NoteCard.js';
 import { TaskCard } from '../classes/TaskCard.js';
 import { CanvasElementService } from '../services/CanvasElementService.js';
 import { useCanvasStore } from '../stores/canvas';
+import { useThemeStore } from '../stores/theme';
 
 const stageContainer = ref(null);
 const stage = ref(null);
@@ -20,6 +21,7 @@ const elements = new Map();
 const linkElements = [];
 
 const canvasStore = useCanvasStore();
+const themeStore = useThemeStore();
 
 const initCanvas = () => {
   const stageObj = markRaw(new Konva.Stage({
@@ -315,6 +317,17 @@ watch(() => canvasStore.noteLinks.length, () => {
 });
 
 watch(
+  () => themeStore.theme,
+  () => {
+    nextTick(() => {
+      if (layer.value) {
+        layer.value.draw();
+      }
+    });
+  }
+);
+
+watch(
   () => [canvasStore.highlightedLinkKey, canvasStore.linkPeerElementId],
   () => {
     nextTick(() => {
@@ -382,5 +395,6 @@ onUnmounted(() => {
 .stage-container {
   width: 100%;
   height: 100%;
+  background: var(--holst-canvas-bg);
 }
 </style>

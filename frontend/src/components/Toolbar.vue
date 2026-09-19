@@ -164,10 +164,12 @@ export default {
 }
 
 .toolbar {
-  background: white;
+  background: var(--holst-bg-surface);
+  color: var(--holst-text);
   padding: 10px;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--holst-shadow-sm);
+  border: 1px solid var(--holst-border);
   display: flex;
   gap: 10px;
   align-items: center;
@@ -176,20 +178,21 @@ export default {
 
 .btn {
   padding: 8px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--holst-border-strong);
   border-radius: 4px;
-  background: white;
+  background: var(--holst-bg-surface);
+  color: var(--holst-text);
   cursor: pointer;
   font-size: 14px;
 }
 
 .btn:hover:not(:disabled) {
-  background: #f5f5f5;
+  background: var(--holst-bg-muted);
 }
 
 .btn.active {
-  background: #dbeafe;
-  border-color: #3b82f6;
+  background: var(--holst-accent-soft);
+  border-color: var(--holst-accent);
 }
 
 .btn:disabled {
@@ -199,8 +202,10 @@ export default {
 
 .search-input {
   padding: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--holst-border-strong);
   border-radius: 4px;
   width: 200px;
+  background: var(--holst-bg-surface);
+  color: var(--holst-text);
 }
 </style>

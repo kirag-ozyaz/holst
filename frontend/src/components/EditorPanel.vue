@@ -349,9 +349,11 @@ const closeEditor = () => {
   right: 20px;
   width: 400px;
   max-height: calc(100vh - 80px);
-  background: white;
+  background: var(--holst-bg-surface);
+  color: var(--holst-text);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--holst-shadow-md);
+  border: 1px solid var(--holst-border);
   display: flex;
   flex-direction: column;
   z-index: 1000;
@@ -362,28 +364,28 @@ const closeEditor = () => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--holst-border);
 }
 
 .editor-title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--holst-text);
 }
 
 .close-button {
   background: none;
   border: none;
   font-size: 24px;
-  color: #6b7280;
+  color: var(--holst-text-muted);
   cursor: pointer;
   padding: 0;
   line-height: 1;
 }
 
 .close-button:hover {
-  color: #1f2937;
+  color: var(--holst-text);
 }
 
 .editor-content {
@@ -400,18 +402,20 @@ const closeEditor = () => {
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: #374151;
+  color: var(--holst-text);
   font-size: 14px;
 }
 
 .form-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--holst-border-strong);
   border-radius: 6px;
   font-size: 14px;
   font-family: inherit;
   box-sizing: border-box;
+  background: var(--holst-bg-surface);
+  color: var(--holst-text);
 }
 
 .form-textarea {
@@ -423,7 +427,7 @@ const closeEditor = () => {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--holst-border);
   border-radius: 6px;
   max-height: 200px;
   overflow-y: auto;
@@ -435,12 +439,12 @@ const closeEditor = () => {
 }
 
 .links-list-interactive li:hover {
-  background: #f9fafb;
+  background: var(--holst-bg-muted);
 }
 
 .links-list li.link-row-active {
-  background: #eff6ff;
-  box-shadow: inset 3px 0 0 #2563eb;
+  background: var(--holst-accent-soft);
+  box-shadow: inset 3px 0 0 var(--holst-accent);
 }
 
 .links-list li {
@@ -448,7 +452,7 @@ const closeEditor = () => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 10px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--holst-border);
   font-size: 13px;
   gap: 8px;
 }
@@ -466,8 +470,8 @@ const closeEditor = () => {
 
 .btn-link-delete {
   border: none;
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--holst-danger-bg);
+  color: var(--holst-danger-text);
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -490,17 +494,17 @@ const closeEditor = () => {
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: var(--holst-accent);
+  color: #ffffff;
 }
 
 .btn-secondary {
-  background: #e5e7eb;
-  color: #1f2937;
+  background: var(--holst-bg-muted);
+  color: var(--holst-text);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #d1d5db;
+  background: var(--holst-border-strong);
 }
 
 .btn-secondary:disabled {
@@ -543,7 +547,7 @@ const closeEditor = () => {
 .hint-text {
   margin: 0 0 8px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--holst-text-muted);
 }
 
 .hint-text-sm {
@@ -560,7 +564,7 @@ const closeEditor = () => {
 }
 
 .btn-link-detach {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--holst-warn-bg);
+  color: var(--holst-warn-text);
 }
 </style>

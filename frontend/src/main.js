@@ -3,6 +3,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import './assets/styles.css'
 import router from './router'
+import { useThemeStore } from './stores/theme'
 import Konva from 'konva'
 
 // Радикальный фикс Vue + Konva - отключаем реактивность
@@ -23,7 +24,9 @@ konvaClasses.forEach(className => {
   }
 });
 
+const pinia = createPinia()
 const app = createApp(App)
-app.use(createPinia())
+app.use(pinia)
 app.use(router)
+useThemeStore(pinia).init()
 app.mount('#app')

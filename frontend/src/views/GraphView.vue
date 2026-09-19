@@ -177,5 +177,6 @@ onUnmounted(() => {
   width: 100%;
   height: calc(100vh - 56px);
   margin-top: 56px;
+  background: var(--holst-canvas-bg);
 }
 </style>

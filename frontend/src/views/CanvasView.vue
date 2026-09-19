@@ -54,8 +54,8 @@ onUnmounted(() => {
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  background: #1e293b;
-  color: white;
+  background: var(--holst-hint-bg);
+  color: var(--holst-hint-text);
   padding: 10px 16px;
   border-radius: 8px;
   font-size: 14px;

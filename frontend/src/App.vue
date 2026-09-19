@@ -1,10 +1,12 @@
 <template>
   <div id="app">
+    <ThemeToggle />
     <router-view />
   </div>
 </template>
 
 <script setup>
+import ThemeToggle from './components/ThemeToggle.vue';
 </script>
 
 <style>
