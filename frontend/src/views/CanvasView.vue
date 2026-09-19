@@ -1,6 +1,6 @@
 <template>
   <div class="canvas-view">
-    <Toolbar />
+    <Toolbar @add-card="handleAddCard" @add-note="handleAddNote" />
     <Canvas ref="canvas" />
   </div>
 </template>

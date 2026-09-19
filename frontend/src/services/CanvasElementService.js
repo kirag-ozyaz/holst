@@ -23,7 +23,8 @@ export class CanvasElementService {
     const maxZ = this.getMaxZIndex();
     const newZIndex = maxZ + 1;
     
-    const element = elementType === 'card' 
+    const isTask = elementType === 'card' || elementType === 'task';
+    const element = isTask
       ? this.store.cards.find(c => c.id === elementId)
       : this.store.notes.find(n => n.id === elementId);
     
