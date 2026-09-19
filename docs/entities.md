@@ -39,6 +39,8 @@ Note ──1:N──► NoteLink (source/target)    # связи заметка�
 
 **Связи ORM:** `subtasks`, `files`, `notes`, `outgoing_links`, `incoming_links`.
 
+На холсте размер карточки (`width`, `height`) меняется маркерами Konva и сохраняется через `PUT /api/cards/{id}`. Иерархия подзадач — поле `parent_id` (ПКМ на карточке задачи).
+
 ## Note (`notes`)
 
 Наследует **BaseCard**.

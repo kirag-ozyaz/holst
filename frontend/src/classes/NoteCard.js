@@ -2,6 +2,7 @@ import Konva from 'konva';
 import { markRaw } from 'vue';
 import { CanvasElement } from './CanvasElement.js';
 import { cardThemeColors, formatCardCanvasText } from '../utils/cardDisplay.js';
+import { clampCardSize } from '../utils/cardDimensions.js';
 
 /**
  * Класс для карточек заметок
@@ -10,11 +11,13 @@ export class NoteCard extends CanvasElement {
    createGroup() {
      super.createGroup();
 
-     const width = this.data.width || 250;
-     const height = this.data.height || 150;
+     const { width, height } = clampCardSize(this.data.width || 250, this.data.height || 150);
+     this.data.width = width;
+     this.data.height = height;
      const colors = cardThemeColors('note');
 
      const rect = markRaw(new Konva.Rect({
+      name: 'cardRect',
       width,
       height,
       fill: colors.fill,
@@ -24,22 +27,29 @@ export class NoteCard extends CanvasElement {
     }));
 
      const metaText = markRaw(new Konva.Text({
+      name: 'metaText',
       text: formatCardCanvasText('note', this.data).split('\n')[0],
       x: 10,
       y: 8,
       fontSize: 11,
       fontStyle: 'bold',
       fill: colors.metaFill,
-      width: width - 20
+      width: width - 20,
+      ellipsis: true,
+      wrap: 'none'
     }));
 
     const titleText = markRaw(new Konva.Text({
+      name: 'titleText',
       text: this.data.title || 'Без названия',
       x: 10,
       y: 24,
       fontSize: 14,
       fill: colors.titleFill,
-      width: width - 20
+      width: width - 20,
+      height: Math.max(20, height - 34),
+      ellipsis: true,
+      wrap: 'word'
     }));
 
     if (rect && metaText && titleText) {
@@ -68,8 +78,30 @@ export class NoteCard extends CanvasElement {
     }
   }
 
+  applySize(width, height) {
+    const size = clampCardSize(width, height);
+    this.data.width = size.width;
+    this.data.height = size.height;
+    if (!this.cardRect) {
+      return;
+    }
+    this.cardRect.width(size.width);
+    this.cardRect.height(size.height);
+    const inner = size.width - 20;
+    if (this.metaText) {
+      this.metaText.width(inner);
+    }
+    if (this.titleText) {
+      this.titleText.width(inner);
+      this.titleText.height(Math.max(20, size.height - 34));
+    }
+  }
+
   updateDisplay(data) {
     this.data = { ...this.data, ...data };
+    if (data.width != null || data.height != null) {
+      this.applySize(this.data.width, this.data.height);
+    }
     if (this.metaText) {
       this.metaText.text(formatCardCanvasText('note', this.data).split('\n')[0]);
     }

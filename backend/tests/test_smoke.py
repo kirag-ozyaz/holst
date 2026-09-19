@@ -40,6 +40,12 @@ def test_card_and_note_crud():
     assert card2["number"] > card["number"]
     updated = client.put(f"/api/cards/{card['id']}", json={"title": "C1b", "number": 99999}).json()
     assert updated["number"] == card["number"]
+    sized = client.put(
+        f"/api/cards/{card['id']}",
+        json={"width": 420, "height": 180},
+    ).json()
+    assert sized["width"] == 420
+    assert sized["height"] == 180
     r = client.put(f"/api/cards/{card['id']}", json={"title": "C2"})
     assert r.json()["title"] == "C2"
 

@@ -5,10 +5,15 @@ export class CanvasElementService {
   constructor(canvasStore) {
     this.store = canvasStore;
     this.positionHandlers = null;
+    this.openContextMenu = null;
   }
 
   setPositionHandlers(handlers) {
     this.positionHandlers = handlers;
+  }
+
+  setContextMenuHandler(handler) {
+    this.openContextMenu = handler;
   }
 
   /**

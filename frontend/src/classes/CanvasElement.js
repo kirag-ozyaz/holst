@@ -1,5 +1,6 @@
 import Konva from 'konva';
 import { markRaw } from 'vue';
+import { clampCardSize } from '../utils/cardDimensions.js';
 
 /**
  * Базовый класс для всех элементов холста
@@ -42,6 +43,25 @@ export class CanvasElement {
 
     this.group.on('dragend', () => {
       this.onDragEnd();
+    });
+
+    this.group.on('contextmenu', (e) => {
+      e.evt.preventDefault();
+      e.cancelBubble = true;
+      const elementPayload = { ...this.data, type: this.getType() };
+      if (this.canvasService.store.linkMode) {
+        return;
+      }
+      const previousSelection = this.canvasService.store.selectedElement;
+      this.canvasService.store.setSelectedElement(elementPayload);
+      if (this.canvasService.openContextMenu) {
+        this.canvasService.openContextMenu(
+          e.evt.clientX,
+          e.evt.clientY,
+          elementPayload,
+          previousSelection
+        );
+      }
     });
   }
 
@@ -189,6 +209,20 @@ export class CanvasElement {
     if (typeof this.applyTheme === 'function') {
       this.applyTheme();
     }
+  }
+
+  finalizeResizeFromTransform() {
+    if (!this.group || !this.cardRect || typeof this.applySize !== 'function') {
+      return null;
+    }
+    const scaleX = this.group.scaleX();
+    const scaleY = this.group.scaleY();
+    const width = this.cardRect.width() * scaleX;
+    const height = this.cardRect.height() * scaleY;
+    this.group.scaleX(1);
+    this.group.scaleY(1);
+    this.applySize(width, height);
+    return clampCardSize(this.data.width, this.data.height);
   }
 
   updatePosition(x, y) {
