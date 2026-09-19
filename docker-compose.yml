@@ -71,6 +71,8 @@ services:
     restart: unless-stopped
 
   voice-stt:
+    profiles:
+      - voice
     build: ./voice-stt
     ports:
       - "5000:5000"
