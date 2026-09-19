@@ -43,12 +43,15 @@ APP_PHASE = os.getenv("APP_PHASE", "0-1")
 
 
 def _resolve_built_at() -> str:
+    """Process start / env; optional .built_at file (often absent when ./backend is bind-mounted)."""
     env_value = os.getenv("APP_BUILT_AT", "").strip()
     if env_value:
         return env_value
     built_file = Path(__file__).resolve().parent.parent / ".built_at"
     if built_file.is_file():
-        return built_file.read_text(encoding="utf-8").strip()
+        text = built_file.read_text(encoding="utf-8").strip().replace("\r", "")
+        if text:
+            return text
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

@@ -10,11 +10,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN date -u +%Y-%m-%dT%H:%M:%SZ > /app/.built_at
-
 EXPOSE 8000
 
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
