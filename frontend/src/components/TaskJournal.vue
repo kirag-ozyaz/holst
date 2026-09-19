@@ -12,33 +12,37 @@
       <ul v-else class="journal-list">
         <li
           v-for="row in visibleRows"
-          :key="row.task.id"
+          :key="row.key"
           class="journal-row"
           :class="{
-            'journal-row-selected': isSelected(row.task.id),
-            'journal-row-has-children': row.hasChildren
+            'journal-row-selected': isSelected(row),
+            'journal-row-has-children': row.hasChildren,
+            'journal-row-note': row.kind === 'note'
           }"
           :style="{ paddingLeft: `${12 + row.depth * 16}px` }"
         >
           <button
             v-if="row.hasChildren"
             type="button"
-            class="journal-chevron"
+            class="journal-expand"
             :aria-expanded="row.expanded"
             :title="row.expanded ? 'Свернуть' : 'Развернуть'"
-            @click.stop="toggleExpand(row.task.id)"
+            @click.stop="toggleExpand(row.key)"
           >
-            {{ row.expanded ? '▾' : '▸' }}
+            {{ row.expanded ? '➖' : '➕' }}
           </button>
-          <span v-else class="journal-chevron journal-chevron-placeholder" aria-hidden="true" />
+          <span v-else class="journal-expand journal-expand-placeholder" aria-hidden="true" />
 
           <button
             type="button"
             class="journal-label"
-            @click="onRowActivate(row)"
+            @click="onRowSelect(row)"
           >
-            <span class="journal-meta">{{ taskMeta(row.task) }}</span>
-            <span class="journal-task-title">{{ row.task.title || 'Без названия' }}</span>
+            <span v-if="row.kind === 'note'" class="journal-kind" aria-hidden="true">📝</span>
+            <span class="journal-label-text">
+              <span class="journal-meta">{{ rowMeta(row) }}</span>
+              <span class="journal-task-title">{{ row.title || 'Без названия' }}</span>
+            </span>
           </button>
         </li>
       </ul>
@@ -51,17 +55,22 @@ import { computed, ref, watch } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
 import { formatCardMetaLine } from '../utils/cardDisplay.js';
 
-function taskMeta(task) {
-  return formatCardMetaLine('task', task);
+function rowMeta(row) {
+  if (row.kind === 'note') {
+    const note = canvasStore.notes.find(n => n.id === row.id);
+    return formatCardMetaLine('note', note || {});
+  }
+  const task = canvasStore.cards.find(c => c.id === row.id);
+  return formatCardMetaLine('task', task || {});
 }
 
 const canvasStore = useCanvasStore();
 const collapsed = ref(false);
-const expandedIds = ref(new Set());
+const expandedKeys = ref(new Set());
 
-function sortTasks(tasks) {
-  return [...tasks].sort((a, b) =>
-    (a.title || '').localeCompare(b.title || '', 'ru', { sensitivity: 'base' })
+function sortByTitle(items, getTitle) {
+  return [...items].sort((a, b) =>
+    (getTitle(a) || '').localeCompare(getTitle(b) || '', 'ru', { sensitivity: 'base' })
   );
 }
 
@@ -75,86 +84,123 @@ const childrenByParent = computed(() => {
     map.get(key).push(task);
   });
   map.forEach((list, key) => {
-    map.set(key, sortTasks(list));
+    map.set(key, sortByTitle(list, (t) => t.title));
   });
   return map;
 });
 
+/** Root tasks only: no parent_id, or parent missing (orphan). */
 const rootTasks = computed(() => {
   const ids = new Set(canvasStore.cards.map(c => c.id));
   const roots = canvasStore.cards.filter(task => {
     if (!task.parent_id) return true;
     return !ids.has(task.parent_id);
   });
-  return sortTasks(roots);
+  return sortByTitle(roots, (t) => t.title);
 });
 
-function hasChildren(taskId) {
-  return (childrenByParent.value.get(taskId) || []).length > 0;
+function childTasks(taskId) {
+  return childrenByParent.value.get(taskId) || [];
 }
 
-function buildVisibleRows(tasks, depth, out) {
-  for (const task of tasks) {
-    const expanded = expandedIds.value.has(task.id);
-    const childList = childrenByParent.value.get(task.id) || [];
+/** Notes subordinate to a task via task_id (EditorPanel attach / create-and-attach). */
+function childNotesOfTask(taskId) {
+  const notes = canvasStore.notes.filter((n) => n.task_id === taskId);
+  return sortByTitle(notes, (n) => n.title);
+}
+
+function hasTaskChildren(taskId) {
+  return childTasks(taskId).length > 0 || childNotesOfTask(taskId).length > 0;
+}
+
+function pushTaskRows(task, depth, out) {
+  const key = `task:${task.id}`;
+  const expanded = expandedKeys.value.has(key);
+  const hasChildren = hasTaskChildren(task.id);
+  out.push({
+    key,
+    kind: 'task',
+    id: task.id,
+    title: task.title,
+    depth,
+    hasChildren,
+    expanded
+  });
+  if (!hasChildren || !expanded) {
+    return;
+  }
+  for (const child of childTasks(task.id)) {
+    pushTaskRows(child, depth + 1, out);
+  }
+  for (const note of childNotesOfTask(task.id)) {
     out.push({
-      task,
-      depth,
-      hasChildren: childList.length > 0,
-      expanded
+      key: `note:${note.id}`,
+      kind: 'note',
+      id: note.id,
+      title: note.title,
+      depth: depth + 1,
+      hasChildren: false,
+      expanded: false
     });
-    if (childList.length > 0 && expanded) {
-      buildVisibleRows(childList, depth + 1, out);
-    }
   }
 }
 
 const visibleRows = computed(() => {
   const rows = [];
-  buildVisibleRows(rootTasks.value, 0, rows);
+  for (const task of rootTasks.value) {
+    pushTaskRows(task, 0, rows);
+  }
   return rows;
 });
 
-function toggleExpand(taskId) {
-  const next = new Set(expandedIds.value);
-  if (next.has(taskId)) {
-    next.delete(taskId);
+function toggleExpand(key) {
+  const next = new Set(expandedKeys.value);
+  if (next.has(key)) {
+    next.delete(key);
   } else {
-    next.add(taskId);
+    next.add(key);
   }
-  expandedIds.value = next;
+  expandedKeys.value = next;
 }
 
-function onRowActivate(row) {
-  if (row.hasChildren) {
-    toggleExpand(row.task.id);
+function onRowSelect(row) {
+  if (row.kind === 'task') {
+    const card = canvasStore.cards.find(c => c.id === row.id);
+    if (card) {
+      canvasStore.setSelectedElement({ ...card, type: 'task' });
+    }
+    return;
   }
-  selectTask(row.task.id);
+  const note = canvasStore.notes.find(n => n.id === row.id);
+  if (note) {
+    canvasStore.setSelectedElement({ ...note, type: 'note' });
+  }
 }
 
-function selectTask(taskId) {
-  const card = canvasStore.cards.find(c => c.id === taskId);
-  if (card) {
-    canvasStore.setSelectedElement({ ...card, type: 'task' });
-  }
-}
-
-function isSelected(taskId) {
+function isSelected(row) {
   return (
-    canvasStore.selectedElement?.type === 'task' &&
-    canvasStore.selectedElement?.id === taskId
+    canvasStore.selectedElement?.type === row.kind &&
+    canvasStore.selectedElement?.id === row.id
   );
 }
 
 watch(
-  () => canvasStore.cards.map(c => c.id).join(','),
+  () =>
+    [
+      canvasStore.cards.map(c => `${c.id}:${c.parent_id}`).join(','),
+      canvasStore.notes.map(n => `${n.id}:${n.task_id || ''}`).join(',')
+    ].join('|'),
   () => {
-    const ids = new Set(canvasStore.cards.map(c => c.id));
+    const valid = new Set();
+    canvasStore.cards.forEach(c => valid.add(`task:${c.id}`));
+    canvasStore.notes.forEach(n => valid.add(`note:${n.id}`));
     const next = new Set();
-    expandedIds.value.forEach(id => {
-      if (ids.has(id)) next.add(id);
+    expandedKeys.value.forEach(key => {
+      if (valid.has(key)) {
+        next.add(key);
+      }
     });
-    expandedIds.value = next;
+    expandedKeys.value = next;
   }
 );
 </script>
@@ -237,23 +283,28 @@ watch(
   font-weight: 600;
 }
 
-.journal-chevron {
+.journal-row-note .journal-label {
+  font-weight: 400;
+}
+
+.journal-expand {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border: none;
   background: transparent;
   cursor: pointer;
-  color: var(--holst-text-muted);
-  font-size: 12px;
+  color: var(--holst-text);
+  font-size: 14px;
+  line-height: 1;
   border-radius: 4px;
 }
 
-.journal-chevron:hover {
+.journal-expand:hover {
   background: var(--holst-bg-muted);
 }
 
-.journal-chevron-placeholder {
+.journal-expand-placeholder {
   cursor: default;
   visibility: hidden;
 }
@@ -261,9 +312,8 @@ watch(
 .journal-label {
   flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 4px;
   text-align: left;
   border: none;
   background: transparent;
@@ -274,6 +324,15 @@ watch(
   border-radius: 4px;
   min-width: 0;
   overflow: hidden;
+}
+
+.journal-label-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .journal-meta {
@@ -290,6 +349,11 @@ watch(
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.3;
+}
+
+.journal-kind {
+  flex-shrink: 0;
+  font-size: 12px;
 }
 
 .journal-label:hover {

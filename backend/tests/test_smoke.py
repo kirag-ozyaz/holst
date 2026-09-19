@@ -78,6 +78,47 @@ def test_note_task_attach_and_link():
     assert cleared.get("task_id") is None
 
 
+def test_note_attach_detach_editor_flow():
+    """Mirrors store attachNoteToTask / detachNoteFromTask (task_id + task_link)."""
+    task = client.post("/api/cards", json={"title": "Родитель"}).json()
+    note = client.post("/api/notes", json={"title": "Заметка"}).json()
+
+    client.put(f"/api/notes/{note['id']}", json={"task_id": task["id"]})
+    link = client.post(
+        "/api/task-links",
+        json={
+            "source_id": task["id"],
+            "target_id": note["id"],
+            "link_target_type": "note",
+            "link_type": "depends_on",
+        },
+    ).json()
+
+    after_attach = client.get(f"/api/notes/{note['id']}").json()
+    assert after_attach["task_id"] == task["id"]
+    links = client.get("/api/task-links").json()
+    assert any(l["id"] == link["id"] for l in links)
+
+    client.delete(f"/api/task-links/{link['id']}")
+    client.put(f"/api/notes/{note['id']}", json={"task_id": None})
+
+    after_detach = client.get(f"/api/notes/{note['id']}").json()
+    assert after_detach.get("task_id") is None
+    links_after = client.get("/api/task-links").json()
+    assert not any(l.get("target_id") == note["id"] for l in links_after)
+
+
+def test_create_note_with_task_id():
+    task = client.post("/api/cards", json={"title": "T"}).json()
+    note = client.post(
+        "/api/notes",
+        json={"title": "N", "task_id": task["id"]},
+    ).json()
+    assert note["task_id"] == task["id"]
+    reloaded = client.get(f"/api/notes/{note['id']}").json()
+    assert reloaded["task_id"] == task["id"]
+
+
 def test_task_link_cycle_rejected():
     a = client.post("/api/cards", json={"title": "A"}).json()
     b = client.post("/api/cards", json={"title": "B"}).json()

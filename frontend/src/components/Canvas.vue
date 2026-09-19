@@ -84,8 +84,8 @@ const renderCanvas = () => {
   updateExistingElements();
   addNewElements();
   removeDeletedElements();
-  renderLinks();
   maintainElementsOrder();
+  renderLinks();
   if (layer.value) {
     layer.value.draw();
   }
@@ -145,36 +145,67 @@ const removeDeletedElements = () => {
   }
 };
 
+/** Point on rect border from center toward (towardX, towardY). */
+const rectEdgePoint = (element, towardX, towardY) => {
+  const shape = element.group.children[0];
+  const hw = shape.width() / 2;
+  const hh = shape.height() / 2;
+  const cx = element.group.x() + hw;
+  const cy = element.group.y() + hh;
+  const dx = towardX - cx;
+  const dy = towardY - cy;
+  if (dx === 0 && dy === 0) {
+    return { x: cx, y: cy };
+  }
+  const t = Math.min(hw / Math.abs(dx), hh / Math.abs(dy));
+  return { x: cx + dx * t, y: cy + dy * t };
+};
+
+const linkEndpoints = (sourceElement, targetElement, pointerLength) => {
+  const sourceShape = sourceElement.group.children[0];
+  const targetShape = targetElement.group.children[0];
+  const sourceCx = sourceElement.group.x() + sourceShape.width() / 2;
+  const sourceCy = sourceElement.group.y() + sourceShape.height() / 2;
+  const targetCx = targetElement.group.x() + targetShape.width() / 2;
+  const targetCy = targetElement.group.y() + targetShape.height() / 2;
+
+  const span = Math.hypot(targetCx - sourceCx, targetCy - sourceCy) || 1;
+  const fx = (targetCx - sourceCx) / span;
+  const fy = (targetCy - sourceCy) / span;
+
+  const fromBase = rectEdgePoint(sourceElement, targetCx, targetCy);
+  const toBase = rectEdgePoint(targetElement, sourceCx, sourceCy);
+  const tipPadding = Math.max(pointerLength * 0.55, 8);
+
+  return {
+    from: { x: fromBase.x + fx * 2, y: fromBase.y + fy * 2 },
+    to: { x: toBase.x - fx * tipPadding, y: toBase.y - fy * tipPadding }
+  };
+};
+
 const renderLinks = () => {
   linkElements.forEach(link => link.destroy());
   linkElements.length = 0;
-
-  const elementCenter = (element) => {
-    const rect = element.group.children[0];
-    return {
-      x: element.group.x() + rect.width() / 2,
-      y: element.group.y() + rect.height() / 2
-    };
-  };
 
   /** Directed edge: arrow at target (source_id → target_id). */
   const drawLinkArrow = (linkKind, linkId, sourceId, targetId, stroke, highlighted = false) => {
     const sourceElement = toRaw(elements.get(sourceId));
     const targetElement = toRaw(elements.get(targetId));
     if (sourceElement && targetElement && sourceElement.group && targetElement.group) {
-      const from = elementCenter(sourceElement);
-      const to = elementCenter(targetElement);
+      const pointerLength = highlighted ? 16 : 12;
+      const { from, to } = linkEndpoints(sourceElement, targetElement, pointerLength);
       const arrow = markRaw(new Konva.Arrow({
         points: [from.x, from.y, to.x, to.y],
         stroke: highlighted ? '#2563eb' : stroke,
         fill: highlighted ? '#2563eb' : stroke,
-        strokeWidth: highlighted ? 4 : 2,
-        pointerLength: highlighted ? 16 : 12,
+        strokeWidth: highlighted ? 4 : 2.5,
+        pointerLength,
         pointerWidth: highlighted ? 14 : 12,
         pointerAtBeginning: false,
         pointerAtEnding: true,
         dash: highlighted ? [] : [6, 4],
         listening: false,
+        perfectDrawEnabled: false,
         shadowColor: highlighted ? '#2563eb' : undefined,
         shadowBlur: highlighted ? 8 : 0,
         shadowOpacity: highlighted ? 0.45 : 0
@@ -182,8 +213,6 @@ const renderLinks = () => {
       layer.value.add(arrow);
       if (highlighted) {
         arrow.moveToTop();
-      } else {
-        arrow.moveToBottom();
       }
       linkElements.push(arrow);
     }
