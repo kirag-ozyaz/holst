@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -40,6 +41,19 @@ create_tables_if_needed()
 APP_VERSION = os.getenv("APP_VERSION", "0.1.0-phase-0-1")
 APP_PHASE = os.getenv("APP_PHASE", "0-1")
 
+
+def _resolve_built_at() -> str:
+    env_value = os.getenv("APP_BUILT_AT", "").strip()
+    if env_value:
+        return env_value
+    built_file = Path(__file__).resolve().parent.parent / ".built_at"
+    if built_file.is_file():
+        return built_file.read_text(encoding="utf-8").strip()
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+APP_BUILT_AT = _resolve_built_at()
+
 app = FastAPI(title="Холст API", version=APP_VERSION)
 
 # CORS
@@ -68,6 +82,7 @@ def health_check():
         "status": "ok",
         "version": APP_VERSION,
         "phase": APP_PHASE,
+        "built_at": APP_BUILT_AT,
         "message": "Холст API работает",
     }
 

@@ -4,6 +4,11 @@
 export class CanvasElementService {
   constructor(canvasStore) {
     this.store = canvasStore;
+    this.positionHandlers = null;
+  }
+
+  setPositionHandlers(handlers) {
+    this.positionHandlers = handlers;
   }
 
   /**

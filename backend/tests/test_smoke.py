@@ -23,6 +23,8 @@ def test_health():
     assert body["status"] == "ok"
     assert body["version"] == "0.1.0-phase-0-1"
     assert body["phase"] == "0-1"
+    assert "built_at" in body
+    assert len(body["built_at"]) >= 10
 
 
 def test_card_and_note_crud():

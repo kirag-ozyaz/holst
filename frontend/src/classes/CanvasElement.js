@@ -116,22 +116,21 @@ export class CanvasElement {
     
     const newZIndex = this.bringToFront();
     this.data.z_index = newZIndex;
-    
-    // Сохраняем позицию
-    if (this.layer.parent) {
-      // Через Canvas.vue методы
+
+    const handlers = this.canvasService.positionHandlers;
+    if (handlers) {
       if (this.getType() === 'task') {
-        this.layer.parent.updateCardPosition(this.id, newX, newY, newZIndex);
+        handlers.updateCardPosition(this.id, newX, newY, newZIndex);
       } else {
-        this.layer.parent.updateNotePosition(this.id, newX, newY, newZIndex);
+        handlers.updateNotePosition(this.id, newX, newY, newZIndex);
       }
+      return;
+    }
+
+    if (this.getType() === 'task') {
+      this.canvasService.store.updateCard(this.id, { x: newX, y: newY, z_index: newZIndex });
     } else {
-      // Прямо через store
-      if (this.getType() === 'task') {
-        this.canvasService.store.updateCard(this.id, { x: newX, y: newY, z_index: newZIndex });
-      } else {
-        this.canvasService.store.updateNote(this.id, { x: newX, y: newY, z_index: newZIndex });
-      }
+      this.canvasService.store.updateNote(this.id, { x: newX, y: newY, z_index: newZIndex });
     }
   }
 

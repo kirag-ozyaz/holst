@@ -196,7 +196,6 @@ const createElement = (data, type) => {
     }
     
     if (element) {
-      element.layer.parent = { updateCardPosition, updateNotePosition };
       const group = element.createGroup();
       if (group && group.children && group.children.length > 0) {
         layer.value.add(group);
@@ -288,6 +287,7 @@ defineExpose({ addCard, addNote });
 
 onMounted(() => {
   elementService.value = new CanvasElementService(canvasStore);
+  elementService.value.setPositionHandlers({ updateCardPosition, updateNotePosition });
   initCanvas();
   loadData();
   window.addEventListener('resize', handleResize);
