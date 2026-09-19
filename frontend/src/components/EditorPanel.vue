@@ -1,6 +1,10 @@
 <template>
   <div class="editor-panel" :style="panelStyle">
-    <div class="editor-header">
+    <div
+      class="editor-header"
+      :class="{ 'editor-header-draggable': true }"
+      @mousedown="onHeaderPointerDown"
+    >
       <h3 class="editor-title">
         {{ element ? (element.type === 'task' ? 'Редактирование задачи' : 'Редактирование заметки') : '' }}
       </h3>
@@ -123,7 +127,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onUnmounted } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
 import { formatCardListLine, formatCardMetaLine } from '../utils/cardDisplay.js';
 
@@ -132,6 +136,14 @@ const canvasStore = useCanvasStore();
 const PANEL_WIDTH = 360;
 
 const panelStyle = computed(() => {
+  const userPos = canvasStore.editorPanelPosition;
+  if (userPos) {
+    return {
+      left: `${userPos.left}px`,
+      top: `${userPos.top}px`,
+      width: `${PANEL_WIDTH}px`
+    };
+  }
   const anchor = canvasStore.editorAnchor;
   if (anchor) {
     return {
@@ -145,6 +157,56 @@ const panelStyle = computed(() => {
     right: '20px',
     width: `${PANEL_WIDTH}px`
   };
+});
+
+let dragState = null;
+
+function onHeaderPointerDown(event) {
+  if (event.button !== 0) {
+    return;
+  }
+  if (event.target.closest('.close-button')) {
+    return;
+  }
+  event.preventDefault();
+  const panel = event.currentTarget.closest('.editor-panel');
+  if (!panel) {
+    return;
+  }
+  const rect = panel.getBoundingClientRect();
+  dragState = {
+    startX: event.clientX,
+    startY: event.clientY,
+    originLeft: rect.left,
+    originTop: rect.top
+  };
+  window.addEventListener('mousemove', onHeaderPointerMove);
+  window.addEventListener('mouseup', onHeaderPointerUp);
+}
+
+function onHeaderPointerMove(event) {
+  if (!dragState) {
+    return;
+  }
+  const dx = event.clientX - dragState.startX;
+  const dy = event.clientY - dragState.startY;
+  const left = Math.max(
+    8,
+    Math.min(dragState.originLeft + dx, window.innerWidth - PANEL_WIDTH - 8)
+  );
+  const top = Math.max(56, Math.min(dragState.originTop + dy, window.innerHeight - 80));
+  canvasStore.setEditorPanelPosition({ left, top });
+}
+
+function onHeaderPointerUp() {
+  dragState = null;
+  window.removeEventListener('mousemove', onHeaderPointerMove);
+  window.removeEventListener('mouseup', onHeaderPointerUp);
+}
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', onHeaderPointerMove);
+  window.removeEventListener('mouseup', onHeaderPointerUp);
 });
 
 const props = defineProps({
@@ -363,7 +425,7 @@ async function removeLink(link) {
 }
 
 const closeEditor = () => {
-  canvasStore.setSelectedElement(null);
+  canvasStore.closeEditor();
 };
 </script>
 
@@ -387,6 +449,15 @@ const closeEditor = () => {
   align-items: center;
   padding: 16px 20px;
   border-bottom: 1px solid var(--holst-border);
+}
+
+.editor-header-draggable {
+  cursor: grab;
+  user-select: none;
+}
+
+.editor-header-draggable:active {
+  cursor: grabbing;
 }
 
 .editor-title {

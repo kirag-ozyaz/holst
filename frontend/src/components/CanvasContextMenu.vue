@@ -117,6 +117,7 @@ async function run(item) {
     switch (item.action) {
       case 'edit':
         canvasStore.setSelectedElement(el)
+        canvasStore.openEditor(el)
         break
       case 'front':
         await canvasStore.bringElementToFront(el)

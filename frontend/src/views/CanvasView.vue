@@ -3,7 +3,7 @@
     <Toolbar />
     <TaskJournal />
     <Canvas ref="canvas" />
-    <EditorPanel v-if="canvasStore.selectedElement" :element="canvasStore.selectedElement" />
+    <EditorPanel v-if="canvasStore.editorElement" :element="canvasStore.editorElement" />
     <div v-if="canvasStore.linkMode" class="link-hint">
       {{ linkHintText }}
     </div>
@@ -37,6 +37,10 @@ const onKeyDown = (e) => {
   }
   if (canvasStore.contextMenu) {
     canvasStore.closeContextMenu();
+    return;
+  }
+  if (canvasStore.editorElement) {
+    canvasStore.closeEditor();
     return;
   }
   if (canvasStore.selectedElement) {

@@ -43,7 +43,9 @@ export class CanvasElement {
 
     this.group.on('dragmove', () => {
       this.canvasService.requestLinksRender();
-      this.canvasService.requestEditorAnchor(this.id);
+      if (this.canvasService.store.editorElement?.id === this.id) {
+        this.canvasService.requestEditorAnchor(this.id);
+      }
     });
 
     this.group.on('dragend', () => {
@@ -59,7 +61,6 @@ export class CanvasElement {
       }
       const previousSelection = this.canvasService.store.selectedElement;
       this.canvasService.store.setSelectedElement(elementPayload);
-      this.canvasService.requestEditorAnchor(this.id);
       if (this.canvasService.openContextMenu) {
         this.canvasService.openContextMenu(
           e.evt.clientX,
@@ -82,7 +83,6 @@ export class CanvasElement {
       return;
     }
     this.canvasService.store.setSelectedElement(elementPayload);
-    this.canvasService.requestEditorAnchor(this.id);
     this.bringToFront();
     this.layer.draw();
   }
@@ -173,7 +173,6 @@ export class CanvasElement {
     this.data.z_index = newZIndex;
 
     const handlers = this.canvasService.positionHandlers;
-    this.canvasService.requestEditorAnchor(this.id);
 
     if (handlers) {
       if (this.getType() === 'task') {
@@ -195,6 +194,20 @@ export class CanvasElement {
    * Перемещает элемент на передний план
    */
   bringToFront() {
+    const store = this.canvasService.store;
+    const parentTaskId =
+      this.getType() === 'task'
+        ? this.data.parent_id
+        : this.getType() === 'note'
+          ? this.data.task_id
+          : null;
+    if (parentTaskId) {
+      const parentZ = store.taskZIndex(parentTaskId);
+      if (parentZ != null) {
+        this.data.z_index = parentZ;
+        return parentZ;
+      }
+    }
     const newZIndex = this.canvasService.bringToFront(this.id, this.getType());
     this.group.moveToTop();
     this.layer.draw();
