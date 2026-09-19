@@ -32,6 +32,16 @@
         ></textarea>
       </div>
 
+      <div v-if="relatedLinks.length" class="form-group">
+        <label>Связи</label>
+        <ul class="links-list">
+          <li v-for="link in relatedLinks" :key="`${link.kind}-${link.id}`">
+            <span class="link-label">{{ linkLabel(link) }}</span>
+            <button type="button" class="btn-link-delete" @click="removeLink(link)">×</button>
+          </li>
+        </ul>
+      </div>
+
       <div class="form-actions">
         <button class="btn btn-primary" @click="saveChanges">
           Сохранить
@@ -45,7 +55,7 @@
 </template>
 
 <script setup>
-import { ref, watch, toRaw } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useCanvasStore } from '../stores/canvas';
 
 const canvasStore = useCanvasStore();
@@ -57,19 +67,46 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close']);
-
 const form = ref({
   title: '',
   content: ''
 });
 
+const relatedLinks = computed(() => {
+  if (!props.element) return [];
+  return canvasStore.linksForElement(props.element.id);
+});
+
 watch(() => props.element, (newElement) => {
   if (newElement) {
     form.value.title = newElement.title || '';
-    form.value.content = Array.isArray(newElement.content) ? JSON.stringify(newElement.content, null, 2) : (newElement.content || '');
+    form.value.content = formatContentForEdit(newElement.content);
   }
 }, { immediate: true });
+
+function formatContentForEdit(content) {
+  if (content == null) return '';
+  if (Array.isArray(content)) {
+    return content.length ? JSON.stringify(content, null, 2) : '';
+  }
+  if (typeof content === 'object') {
+    return JSON.stringify(content, null, 2);
+  }
+  return String(content);
+}
+
+function parseContentForSave(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
 
 const saveChanges = async () => {
   if (!props.element) return;
@@ -77,7 +114,7 @@ const saveChanges = async () => {
   try {
     const updateData = {
       title: form.value.title,
-      content: form.value.content
+      content: parseContentForSave(form.value.content)
     };
 
     if (props.element.type === 'task') {
@@ -85,8 +122,6 @@ const saveChanges = async () => {
     } else if (props.element.type === 'note') {
       await canvasStore.updateNote(props.element.id, updateData);
     }
-
-    closeEditor();
   } catch (error) {
     console.error('Error saving element:', error);
     alert('Ошибка при сохранении');
@@ -104,19 +139,37 @@ const deleteElement = async () => {
     if (props.element.type === 'task') {
       await canvasStore.deleteCard(props.element.id);
     } else if (props.element.type === 'note') {
-      await canvasStore.updateNote(props.element.id, { deleted: true });
+      await canvasStore.deleteNote(props.element.id);
     }
-
-    closeEditor();
   } catch (error) {
     console.error('Error deleting element:', error);
     alert('Ошибка при удалении');
   }
 };
 
+function linkLabel(link) {
+  const otherId = link.source_id === props.element.id ? link.target_id : link.source_id;
+  const card = canvasStore.cards.find(c => c.id === otherId);
+  if (card) return `→ ${card.title || 'Задача'}`;
+  const note = canvasStore.notes.find(n => n.id === otherId);
+  if (note) return `→ ${note.title || 'Заметка'}`;
+  return `→ ${otherId}`;
+}
+
+async function removeLink(link) {
+  try {
+    if (link.kind === 'task') {
+      await canvasStore.deleteTaskLink(link.id);
+    } else {
+      await canvasStore.deleteNoteLink(link.id);
+    }
+  } catch (error) {
+    alert('Не удалось удалить связь');
+  }
+}
+
 const closeEditor = () => {
   canvasStore.setSelectedElement(null);
-  emit('close');
 };
 </script>
 
@@ -158,7 +211,6 @@ const closeEditor = () => {
   cursor: pointer;
   padding: 0;
   line-height: 1;
-  transition: color 0.2s;
 }
 
 .close-button:hover {
@@ -190,18 +242,45 @@ const closeEditor = () => {
   border-radius: 6px;
   font-size: 14px;
   font-family: inherit;
-  transition: border-color 0.2s;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-sizing: border-box;
 }
 
 .form-textarea {
   resize: vertical;
   min-height: 120px;
+}
+
+.links-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.links-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+}
+
+.links-list li:last-child {
+  border-bottom: none;
+}
+
+.btn-link-delete {
+  border: none;
+  background: #fee2e2;
+  color: #b91c1c;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .form-actions {
@@ -217,7 +296,6 @@ const closeEditor = () => {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
 }
 
 .btn-primary {
@@ -225,16 +303,8 @@ const closeEditor = () => {
   color: white;
 }
 
-.btn-primary:hover {
-  background: #2563eb;
-}
-
 .btn-danger {
   background: #ef4444;
   color: white;
-}
-
-.btn-danger:hover {
-  background: #dc2626;
 }
 </style>

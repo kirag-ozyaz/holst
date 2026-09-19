@@ -190,13 +190,35 @@ def delete_note(note_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Заметка удалена"}
 
+def _task_link_would_cycle(db: Session, source_id: str, target_id: str) -> bool:
+    """True if adding edge source -> target closes a cycle among tasks."""
+    stack = [target_id]
+    visited = set()
+    while stack:
+        node = stack.pop()
+        if node == source_id:
+            return True
+        if node in visited:
+            continue
+        visited.add(node)
+        links = db.query(TaskLink).filter(
+            TaskLink.source_id == node,
+            TaskLink.link_target_type == "task",
+        ).all()
+        for link in links:
+            if link.target_id:
+                stack.append(link.target_id)
+    return False
+
+
 # Task Links
 @app.post("/api/task-links")
 def create_task_link(link_data: dict, db: Session = Depends(get_db)):
-    # TODO: Add cycle detection logic
     source_id = link_data["source_id"]
     target_id = link_data["target_id"]
-    link_target_type = link_data.get("link_target_type", "card")
+    link_target_type = link_data.get("link_target_type", "task")
+    if link_target_type == "card":
+        link_target_type = "task"
     
     # Validate that source and target exist
     source_card = db.query(Task).filter(Task.id == source_id).first()
@@ -207,6 +229,10 @@ def create_task_link(link_data: dict, db: Session = Depends(get_db)):
         target_card = db.query(Task).filter(Task.id == target_id).first()
         if not target_card:
             raise HTTPException(status_code=404, detail="Target card not found")
+        if source_id == target_id:
+            raise HTTPException(status_code=400, detail="Cannot link task to itself")
+        if _task_link_would_cycle(db, source_id, target_id):
+            raise HTTPException(status_code=400, detail="Link would create a cycle")
     elif link_target_type == "note":
         target_note = db.query(Note).filter(Note.id == target_id).first()
         if not target_note:

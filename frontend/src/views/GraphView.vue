@@ -1,24 +1,25 @@
 <template>
   <div class="graph-view">
+    <Toolbar />
     <div ref="graphContainer" class="graph-container"></div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch, onUnmounted, nextTick } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import cytoscape from 'cytoscape';
+import Toolbar from '../components/Toolbar.vue';
 import { useCanvasStore } from '../stores/canvas';
 
 const graphContainer = ref(null);
 const cy = ref(null);
 const canvasStore = useCanvasStore();
 const route = useRoute();
-const router = useRouter();
 
 const initGraph = () => {
-  if (!graphContainer.value) return;
-  
+  if (!graphContainer.value || cy.value) return;
+
   cy.value = cytoscape({
     container: graphContainer.value,
     style: [
@@ -26,17 +27,17 @@ const initGraph = () => {
         selector: 'node',
         style: {
           'background-color': '#666',
-          'label': 'data(label)',
+          label: 'data(label)',
           'text-valign': 'center',
           'text-halign': 'center',
-          'color': 'white',
+          color: 'white',
           'font-size': '12px'
         }
       },
       {
         selector: 'edge',
         style: {
-          'width': 2,
+          width: 2,
           'line-color': '#ccc',
           'target-arrow-color': '#ccc',
           'target-arrow-shape': 'triangle',
@@ -47,43 +48,34 @@ const initGraph = () => {
         selector: '.card',
         style: {
           'background-color': 'lightblue',
-          'shape': 'rectangle'
+          shape: 'rectangle'
         }
       },
       {
         selector: '.note',
         style: {
           'background-color': 'lightyellow',
-          'shape': 'ellipse'
+          shape: 'ellipse'
         }
       }
     ],
-    layout: {
-      name: 'cose'
-    }
-  });
-
-  cy.value.on('tap', 'node', (evt) => {
-    const node = evt.target;
-    console.log('Tapped node:', node.data());
+    layout: { name: 'preset' }
   });
 };
 
-const renderGraph = () => {
-  if (!cy.value) return;
-  
+const buildGraphElements = () => {
   const elements = [];
 
   canvasStore.cards.forEach(card => {
     elements.push({
-      data: { id: card.id, label: card.title, type: 'card' },
+      data: { id: card.id, label: card.title || 'Задача' },
       classes: 'card'
     });
   });
 
   canvasStore.notes.forEach(note => {
     elements.push({
-      data: { id: note.id, label: note.title, type: 'note' },
+      data: { id: note.id, label: note.title || 'Заметка' },
       classes: 'note'
     });
   });
@@ -110,8 +102,15 @@ const renderGraph = () => {
     });
   });
 
-  cy.value.add(elements);
-  cy.value.layout({ name: 'cose' }).run();
+  return elements;
+};
+
+const renderGraph = () => {
+  if (!cy.value) return;
+
+  cy.value.elements().remove();
+  cy.value.add(buildGraphElements());
+  cy.value.layout({ name: 'cose', animate: false }).run();
 };
 
 const loadData = async () => {
@@ -124,17 +123,24 @@ onMounted(() => {
   loadData();
 });
 
-watch(route, () => {
-  if (route.path === '/graph') {
-    nextTick(() => {
-      loadData();
-    });
+watch(
+  () => route.path,
+  (path) => {
+    if (path === '/graph') {
+      nextTick(() => {
+        if (!cy.value) {
+          initGraph();
+        }
+        loadData();
+      });
+    }
   }
-});
+);
 
 onUnmounted(() => {
   if (cy.value) {
     cy.value.destroy();
+    cy.value = null;
   }
 });
 </script>
@@ -143,10 +149,12 @@ onUnmounted(() => {
 .graph-view {
   width: 100vw;
   height: 100vh;
+  position: relative;
 }
 
 .graph-container {
   width: 100%;
-  height: 100%;
+  height: calc(100vh - 56px);
+  margin-top: 56px;
 }
 </style>

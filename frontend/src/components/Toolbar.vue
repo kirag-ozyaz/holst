@@ -2,62 +2,72 @@
   <div class="toolbar">
     <button @click="addCard" class="btn">➕ Задача</button>
     <button @click="addNote" class="btn">📝 Заметка</button>
+    <button
+      @click="toggleLinkMode"
+      class="btn"
+      :class="{ active: canvasStore.linkMode }"
+    >
+      🔗 {{ canvasStore.linkMode ? 'Связь…' : 'Связь' }}
+    </button>
     <button @click="toggleView" class="btn">{{ isGraphView ? 'Холст' : 'Граф' }}</button>
-    <input v-model="searchQuery" @input="search" placeholder="Поиск..." class="search-input">
-    <button @click="exportData" class="btn">📄 Экспорт</button>
+    <input v-model="searchQuery" @input="search" placeholder="Поиск..." class="search-input" disabled title="Фаза 2">
+    <button @click="exportData" class="btn" disabled title="Фаза 3">📄 Экспорт</button>
   </div>
 </template>
 
 <script>
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useCanvasStore } from '../stores/canvas';
 
 export default {
   name: 'Toolbar',
+  emits: ['add-card', 'add-note'],
   data() {
     return {
-      searchQuery: '',
-      isGraphView: false
+      searchQuery: ''
     }
   },
   setup() {
     const canvasStore = useCanvasStore()
     const router = useRouter()
-    return { canvasStore, router }
+    const route = useRoute()
+    return { canvasStore, router, route }
+  },
+  computed: {
+    isGraphView() {
+      return this.route.path === '/graph'
+    }
   },
   methods: {
-    async addCard() {
-      const cardData = {
+    addCard() {
+      this.$emit('add-card', {
         title: 'Новая задача',
         x: Math.random() * 500,
         y: Math.random() * 500
-      }
-      // Вызываем событие для добавления карточки на холсте
-      this.$emit('add-card', cardData)
+      })
     },
 
-    async addNote() {
-      const noteData = {
+    addNote() {
+      this.$emit('add-note', {
         title: 'Новая заметка',
         x: Math.random() * 500,
         y: Math.random() * 500
-      }
-      // Вызываем событие для добавления заметки на холсте
-      this.$emit('add-note', noteData)
+      })
+    },
+
+    toggleLinkMode() {
+      this.canvasStore.toggleLinkMode()
     },
 
     toggleView() {
-      this.isGraphView = !this.isGraphView
-      this.router.push(this.isGraphView ? '/graph' : '/')
+      this.router.push(this.isGraphView ? '/' : '/graph')
     },
 
     search() {
-      // TODO: Implement search
       console.log('Searching for:', this.searchQuery)
     },
 
     exportData() {
-      // TODO: Implement export
       console.log('Exporting data...')
     }
   }
@@ -77,6 +87,8 @@ export default {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 20px);
 }
 
 .btn {
@@ -88,8 +100,18 @@ export default {
   font-size: 14px;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: #f5f5f5;
+}
+
+.btn.active {
+  background: #dbeafe;
+  border-color: #3b82f6;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .search-input {

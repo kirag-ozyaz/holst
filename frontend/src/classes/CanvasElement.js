@@ -49,8 +49,13 @@ export class CanvasElement {
    * Обработчик выбора элемента
    */
   onSelect() {
-    // Обновляем выбранный элемент в store
-    this.canvasService.store.setSelectedElement(this.data);
+    const elementPayload = { ...this.data, type: this.getType() };
+    if (this.canvasService.store.linkMode) {
+      this.canvasService.store.handleLinkClick(elementPayload);
+      this.layer.draw();
+      return;
+    }
+    this.canvasService.store.setSelectedElement(elementPayload);
     this.bringToFront();
     this.layer.draw();
   }
@@ -59,8 +64,10 @@ export class CanvasElement {
    * Обработчик начала перетаскивания
    */
   onDragStart() {
-    // Обновляем выбранный элемент в store
-    this.canvasService.store.setSelectedElement(this.data);
+    if (this.canvasService.store.linkMode) {
+      return;
+    }
+    this.canvasService.store.setSelectedElement({ ...this.data, type: this.getType() });
     this.bringToFront();
     this.layer.draw();
   }
@@ -141,6 +148,12 @@ export class CanvasElement {
   /**
    * Обновляет позицию элемента (только если не перетаскивается)
    */
+  updateLabel(title) {
+    if (this.group && this.group.children[1]) {
+      this.group.children[1].text(title || 'Untitled');
+    }
+  }
+
   updatePosition(x, y) {
     // Проверяем, не перетаскивается ли элемент
     if (this.group && !this.group.isDragging()) {

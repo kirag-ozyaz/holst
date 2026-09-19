@@ -94,6 +94,7 @@ const updateExistingElements = () => {
     const element = toRaw(elements.get(card.id));
     if (element) {
       element.updatePosition(card.x, card.y);
+      element.updateLabel(card.title);
     }
   });
   
@@ -101,6 +102,7 @@ const updateExistingElements = () => {
     const element = toRaw(elements.get(note.id));
     if (element) {
       element.updatePosition(note.x, note.y);
+      element.updateLabel(note.title);
     }
   });
 };
@@ -137,10 +139,9 @@ const renderLinks = () => {
   linkElements.forEach(link => link.destroy());
   linkElements.length = 0;
 
-  canvasStore.taskLinks.forEach(link => {
-    const sourceElement = toRaw(elements.get(link.source_id));
-    const targetElement = toRaw(elements.get(link.target_id));
-
+  const drawLinkLine = (sourceId, targetId, stroke = 'gray') => {
+    const sourceElement = toRaw(elements.get(sourceId));
+    const targetElement = toRaw(elements.get(targetId));
     if (sourceElement && targetElement && sourceElement.group && targetElement.group) {
       const line = markRaw(new Konva.Line({
         points: [
@@ -149,15 +150,22 @@ const renderLinks = () => {
           targetElement.group.x() + (targetElement.group.children[0].width() / 2),
           targetElement.group.y() + (targetElement.group.children[0].height() / 2)
         ],
-        stroke: 'gray',
+        stroke,
         strokeWidth: 2,
         dash: [5, 5]
       }));
-
       layer.value.add(line);
       line.moveToBottom();
       linkElements.push(line);
     }
+  };
+
+  canvasStore.taskLinks.forEach(link => {
+    drawLinkLine(link.source_id, link.target_id, '#64748b');
+  });
+
+  canvasStore.noteLinks.forEach(link => {
+    drawLinkLine(link.source_id, link.target_id, '#ca8a04');
   });
 };
 
@@ -236,17 +244,21 @@ const addNote = async (noteData) => {
 };
 
 // Watch for store changes
-watch(() => canvasStore.cards.length, () => {
-  nextTick(() => {
-    renderCanvas();
-  });
+watch(() => canvasStore.cards, () => {
+  nextTick(() => renderCanvas());
 }, { deep: true });
 
-watch(() => canvasStore.notes.length, () => {
-  nextTick(() => {
-    renderCanvas();
-  });
+watch(() => canvasStore.notes, () => {
+  nextTick(() => renderCanvas());
 }, { deep: true });
+
+watch(() => canvasStore.taskLinks.length, () => {
+  nextTick(() => renderCanvas());
+});
+
+watch(() => canvasStore.noteLinks.length, () => {
+  nextTick(() => renderCanvas());
+});
 
 // Watch for selected element changes
 let previousSelectedElement = null;
