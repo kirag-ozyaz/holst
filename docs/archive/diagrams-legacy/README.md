@@ -28,7 +28,9 @@
 - **Frontend**: Vue 3 + Pinia + Konva.js (canvas) + Cytoscape.js (граф)
 - **Инфраструктура**: Docker Compose, Nginx
 
-## Архитектура
+> **Устарело:** актуальная схема — [../../architecture.md](../../architecture.md) и [../../classes.md](../../classes.md).
+
+## Архитектура (историческая)
 
 ```
 ┌─────────────────────────────────────────────┐
