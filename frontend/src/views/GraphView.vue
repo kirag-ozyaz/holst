@@ -38,10 +38,18 @@ const initGraph = () => {
         selector: 'edge',
         style: {
           width: 2,
-          'line-color': '#ccc',
-          'target-arrow-color': '#ccc',
+          'line-color': '#64748b',
+          'target-arrow-color': '#64748b',
           'target-arrow-shape': 'triangle',
+          'arrow-scale': 1.2,
           'curve-style': 'bezier'
+        }
+      },
+      {
+        selector: 'edge.note-edge',
+        style: {
+          'line-color': '#ca8a04',
+          'target-arrow-color': '#ca8a04'
         }
       },
       {
@@ -87,7 +95,8 @@ const buildGraphElements = () => {
         source: link.source_id,
         target: link.target_id,
         label: link.link_type
-      }
+      },
+      classes: 'task-edge'
     });
   });
 
@@ -98,7 +107,8 @@ const buildGraphElements = () => {
         source: link.source_id,
         target: link.target_id,
         label: link.link_type
-      }
+      },
+      classes: 'note-edge'
     });
   });
 

@@ -238,6 +238,7 @@ export const useCanvasStore = defineStore('canvas', {
       )
     },
 
+    /** Visual/task_links direction: task (source) → note (target); matches link mode first→second click. */
     async ensureTaskNoteLink(taskId, noteId) {
       if (this.findTaskNoteLink(taskId, noteId)) {
         return

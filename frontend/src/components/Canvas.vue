@@ -139,33 +139,45 @@ const renderLinks = () => {
   linkElements.forEach(link => link.destroy());
   linkElements.length = 0;
 
-  const drawLinkLine = (sourceId, targetId, stroke = 'gray') => {
+  const elementCenter = (element) => {
+    const rect = element.group.children[0];
+    return {
+      x: element.group.x() + rect.width() / 2,
+      y: element.group.y() + rect.height() / 2
+    };
+  };
+
+  /** Directed edge: arrow at target (source_id → target_id). */
+  const drawLinkArrow = (sourceId, targetId, stroke = 'gray') => {
     const sourceElement = toRaw(elements.get(sourceId));
     const targetElement = toRaw(elements.get(targetId));
     if (sourceElement && targetElement && sourceElement.group && targetElement.group) {
-      const line = markRaw(new Konva.Line({
-        points: [
-          sourceElement.group.x() + (sourceElement.group.children[0].width() / 2),
-          sourceElement.group.y() + (sourceElement.group.children[0].height() / 2),
-          targetElement.group.x() + (targetElement.group.children[0].width() / 2),
-          targetElement.group.y() + (targetElement.group.children[0].height() / 2)
-        ],
+      const from = elementCenter(sourceElement);
+      const to = elementCenter(targetElement);
+      const arrow = markRaw(new Konva.Arrow({
+        points: [from.x, from.y, to.x, to.y],
         stroke,
+        fill: stroke,
         strokeWidth: 2,
-        dash: [5, 5]
+        pointerLength: 12,
+        pointerWidth: 12,
+        pointerAtBeginning: false,
+        pointerAtEnding: true,
+        dash: [6, 4],
+        listening: false
       }));
-      layer.value.add(line);
-      line.moveToBottom();
-      linkElements.push(line);
+      layer.value.add(arrow);
+      arrow.moveToBottom();
+      linkElements.push(arrow);
     }
   };
 
   canvasStore.taskLinks.forEach(link => {
-    drawLinkLine(link.source_id, link.target_id, '#64748b');
+    drawLinkArrow(link.source_id, link.target_id, '#64748b');
   });
 
   canvasStore.noteLinks.forEach(link => {
-    drawLinkLine(link.source_id, link.target_id, '#ca8a04');
+    drawLinkArrow(link.source_id, link.target_id, '#ca8a04');
   });
 };
 
